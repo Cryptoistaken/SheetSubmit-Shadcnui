@@ -759,6 +759,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
       try {
         text = await navigator.clipboard.readText();
       } catch {
+        toast("Cannot read clipboard");
         return;
       }
       if (!text) return;
@@ -766,13 +767,13 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
       get().commitCell(rowIdx, colKey, text);
       toast("Pasted");
     } else {
-      navigator.clipboard
-        .writeText(val)
-        .then(() => {
-          vibrate();
-          toast("Copied");
-        })
-        .catch(() => {});
+      try {
+        await navigator.clipboard.writeText(val);
+        vibrate();
+        toast("Copied");
+      } catch {
+        toast("Cannot copy");
+      }
     }
   },
 
@@ -854,7 +855,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
       const result = await behavior.onDotDoubleTap(row);
       if (result?.action === "totp_copied") {
         await navigator.clipboard.writeText(result.code).catch(() => {});
-        toast(`TOTP ${result.code} copied`);
+        toast("TOTP copied");
       }
     }
   },

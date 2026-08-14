@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 
-import { useAuth } from "@/contexts/AuthContext";
 import { useUndoRedo } from "@/hooks/useUndoRedo";
 import { useToast } from "@/lib/toast";
 import { useSheetStore } from "@/stores/sheetStore";
@@ -34,11 +33,9 @@ function RedoIcon() {
 
 export default function SheetToolbar() {
   const { canUndo, canRedo, undo, redo } = useUndoRedo();
-  const { user } = useAuth();
   const showToast = useToast();
   const columns = useSheetStore((s) => s.columns);
   const visibleCols = useSheetStore((s) => s.visibleCols);
-  const hasDuplicates = useSheetStore((s) => s.hasDuplicates);
   const checkRunning = useSheetStore((s) => s.checkRunning);
 
   const [open, setOpen] = useState(false);
@@ -157,9 +154,7 @@ export default function SheetToolbar() {
       </button>
       <div className="check-split-wrap" data-check={checkRunning ? "checking" : ""}>
         <button
-          className={
-            "check-split-main" + (hasDuplicates ? " warning" : "")
-          }
+          className="check-split-main"
           onClick={() => void useSheetStore.getState().runCheck()}
         >
           {checkRunning ? "Checking..." : "Check"}
@@ -192,27 +187,20 @@ export default function SheetToolbar() {
           <span className="autocheck-track"></span>
           Auto-check
         </button>
-        {user?.isAdmin && (
-          <>
-            <div
-              className="check-dropdown-label"
-              style={{ marginTop: 8 }}
-            >
-              Page Check
-            </div>
-            <button
-              className={"autocheck-toggle" + (waCheckOn ? " on" : "")}
-              onClick={() => {
-                const next = !waCheckOn;
-                setWaCheckOn(next);
-                localStorage.setItem("ss_waCheck", String(next));
-              }}
-            >
-              <span className="autocheck-track"></span>
-              Page Check
-            </button>
-          </>
-        )}
+        <div className="check-dropdown-label" style={{ marginTop: 8 }}>
+          Page Check
+        </div>
+        <button
+          className={"autocheck-toggle" + (waCheckOn ? " on" : "")}
+          onClick={() => {
+            const next = !waCheckOn;
+            setWaCheckOn(next);
+            localStorage.setItem("ss_waCheck", String(next));
+          }}
+        >
+          <span className="autocheck-track"></span>
+          Page Check
+        </button>
       </div>
       <button
         ref={btnRef}

@@ -1291,6 +1291,8 @@ table.grid tbody tr { content-visibility: auto; contain-intrinsic-size: 36px; }
 
 /* ── Grid table ── */
 table.grid {
+    display: table; /* Tailwind v4 .grid utility (display:grid) would otherwise
+                       kill table-layout: fixed — must stay unlayered */
     border-collapse: collapse;
     table-layout: fixed;
     width: 100%;

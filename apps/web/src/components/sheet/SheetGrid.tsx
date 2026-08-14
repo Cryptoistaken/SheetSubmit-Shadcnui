@@ -42,6 +42,7 @@ export default function SheetGrid() {
   const clickCount = useRef(0);
   const clickTarget = useRef<Element | null>(null);
   const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastTap = useRef<{ row: number; col: string; t: number } | null>(null);
 
   useEffect(() => {
     return () => {
@@ -129,28 +130,32 @@ export default function SheetGrid() {
       const colKey = td.dataset.col ?? "";
       if (store.selectionMode) {
         store.toggleSelection("cell", rowIdx, colKey);
-      } else {
-        if (
-          store.qebOpen &&
-          store.selectedCell &&
-          (store.selectedCell.rowIdx !== rowIdx ||
-            store.selectedCell.colIdx !== colKey)
-        ) {
-          store.commitQuickEdit();
-        }
-        store.openQuickEdit(rowIdx, colKey);
+        return;
       }
+      const now = Date.now();
+      const last = lastTap.current;
+      if (
+        last &&
+        last.row === rowIdx &&
+        last.col === colKey &&
+        now - last.t < 400
+      ) {
+        lastTap.current = null;
+        useSheetStore.getState().cancelQuickEdit();
+        void useSheetStore.getState().doubleTap(rowIdx, colKey);
+        return;
+      }
+      lastTap.current = { row: rowIdx, col: colKey, t: now };
+      if (
+        store.qebOpen &&
+        store.selectedCell &&
+        (store.selectedCell.rowIdx !== rowIdx ||
+          store.selectedCell.colIdx !== colKey)
+      ) {
+        store.commitQuickEdit();
+      }
+      store.openQuickEdit(rowIdx, colKey);
     }
-  }
-
-  function handleDoubleClick(e: ReactMouseEvent<HTMLDivElement>) {
-    const t = e.target as HTMLElement | null;
-    if (!t) return;
-    const td = t.closest("td.dc") as HTMLElement | null;
-    if (!td) return;
-    const store = useSheetStore.getState();
-    if (store.selectionMode) return;
-    void store.doubleTap(Number(td.dataset.row), td.dataset.col ?? "");
   }
 
   function handlePointerDown(e: ReactPointerEvent<HTMLDivElement>) {
@@ -221,7 +226,6 @@ export default function SheetGrid() {
     <div
       className="sheet-wrap"
       onClick={handleClick}
-      onDoubleClick={handleDoubleClick}
       onPointerDown={handlePointerDown}
       onPointerUp={cancelHold}
       onPointerLeave={cancelHold}
