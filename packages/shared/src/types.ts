@@ -27,6 +27,13 @@ export interface SheetFile {
   deletedAt?: number;
 }
 
+/** File record as persisted in Redis — adds server-side fields on top of SheetFile. */
+export interface StoredFile extends SheetFile {
+  userId?: string;
+  columns?: ColumnDef[] | null;
+  [k: string]: unknown;
+}
+
 /** A grid row — cookie cells are plain string keys. */
 export type Row = Record<string, string | undefined>;
 
