@@ -351,8 +351,8 @@ export default function SheetToolbar() {
         </button>
         <button
           className="sheet-more-item"
-          title="Remove empty rows from used data"
-          aria-label="Remove empty rows"
+          title="Compact - remove empty rows between used rows"
+          aria-label="Compact rows"
           onClick={() => {
             close();
             useSheetStore.getState().removeEmptyRows();
@@ -371,7 +371,7 @@ export default function SheetToolbar() {
             <line x1="10" y1="11" x2="10" y2="17" />
             <line x1="14" y1="11" x2="14" y2="17" />
           </svg>
-          Remove empty rows
+          Compact
         </button>
         <div className="sheet-more-sep"></div>
         {columns.map((col) => (

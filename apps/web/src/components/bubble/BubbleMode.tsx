@@ -61,6 +61,19 @@ export default function BubbleMode({ fileId }: { fileId: string }) {
     return () => useSheetStore.getState().closeFile();
   }, [fileId]);
 
+  // Bubble default: only cookies + 2FA key columns visible (uid hidden) unless
+  // the user has explicitly saved a column preference for this file.
+  useEffect(() => {
+    if (status !== "ready") return;
+    try {
+      if (!localStorage.getItem(`ss_cols_${fileId}`)) {
+        useSheetStore.setState({ visibleCols: new Set(["cookies", "twofakey"]) });
+      }
+    } catch {
+      // ignore malformed storage
+    }
+  }, [status, fileId]);
+
   useEffect(() => {
     if (status !== "ready") return;
     const t = setInterval(() => {

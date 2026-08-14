@@ -1366,7 +1366,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
       if (columns.some((c) => row[c.key])) lastDataIdx = idx;
     });
     if (lastDataIdx < 0) {
-      toast("No data rows to clean");
+      toast("Nothing to compact");
       return;
     }
     const used = s.rows.slice(0, lastDataIdx + 1);
@@ -1374,10 +1374,9 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     const cleaned = used.filter((row) => columns.some((c) => row[c.key]));
     const removed = used.length - cleaned.length;
     if (removed === 0) {
-      toast("No empty rows to remove");
+      toast("Sheet already compact");
       return;
-    }
-    const undoStack: UndoEntry[] = [
+    }    const undoStack: UndoEntry[] = [
       ...s.undoStack,
       { type: "rows", prevRows: s.rows.map((r) => ({ ...r })) },
     ];
@@ -1398,20 +1397,27 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
       selCols: new Set(),
     });
     get().persist("clean");
-    toast(`Removed ${removed} empty row${removed === 1 ? "" : "s"}`);
+    toast(`Compacted - ${removed} row${removed === 1 ? "" : "s"} removed`);
   },
 
   bubbleGetActiveRow: () => {
     const s = get();
+    const complete = (r: Row) => !!(r.cookies && r.twofakey);
+    // Keep the current in-progress row (missing cookie or missing key).
     if (
       s.bubbleActiveRow >= 0 &&
       s.bubbleActiveRow < s.rows.length &&
-      !s.rows[s.bubbleActiveRow].cookies
+      !complete(s.rows[s.bubbleActiveRow])
     ) {
       return s.bubbleActiveRow;
     }
-    for (let i = 0; i < s.rows.length; i++) {
-      if (!s.rows[i].cookies) {
+    // Scan forward from the current position: first row that still needs
+    // something (cookie-only waiting for 2FA, key-only waiting for cookie,
+    // or fully empty). Never jumps back to an already-advanced account.
+    let start = Math.max(0, s.bubbleActiveRow);
+    if (start >= s.rows.length) start = 0;
+    for (let i = start; i < s.rows.length; i++) {
+      if (!complete(s.rows[i])) {
         set({ bubbleActiveRow: i });
         return i;
       }
@@ -1437,10 +1443,14 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     const trimmed = (text || "").trim();
     const dupe = s.rows.findIndex((r) => (r.cookies ?? "").trim() === trimmed);
     if (dupe !== -1) {
-      toast("Duplicate cookie - already at row " + (dupe + 1));
+      toast("Dup cookie @ row " + (dupe + 1));
       return;
     }
     const idx = get().bubbleGetActiveRow();
+    if (s.rows[idx].cookies) {
+      toast("Row " + (idx + 1) + ": paste 2FA key");
+      return;
+    }
     const rows = s.rows.slice();
     rows[idx] = { ...rows[idx], cookies: text };
     const newInvalid = new Set(s.invalidCells);
@@ -1456,8 +1466,11 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
       });
     }
     vibrate(15);
+    const complete = !!rows[idx].twofakey;
     toast(
-      "Cookie " + (idx + 1) + " saved - now copy 2FA key or double-tap dot to skip",
+      complete
+        ? "Row " + (idx + 1) + " done - next cookie"
+        : "Row " + (idx + 1) + ": paste 2FA key",
     );
     set({
       rows,
@@ -1466,6 +1479,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
       ...recomputeMarks(rows, s.crossDups, s.columns),
     });
     get().persist("bubble");
+    if (complete) get().bubbleAdvanceActiveRow();
   },
 
   bubbleSaveKey: async (text) => {
@@ -1474,24 +1488,13 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     for (let i = 0; i < s.rows.length; i++) {
       const k = s.rows[i].twofakey ? normalizeBubbleKey(s.rows[i].twofakey) : "";
       if (k === key) {
-        toast("Duplicate 2FA key - already at row " + (i + 1));
+        toast("Dup 2FA @ row " + (i + 1));
         return;
       }
     }
-    const idx = (() => {
-      const ar = s.bubbleActiveRow;
-      if (
-        ar >= 0 &&
-        ar < s.rows.length &&
-        s.rows[ar].cookies &&
-        !s.rows[ar].twofakey
-      ) {
-        return ar;
-      }
-      return get().bubbleGetActiveRow();
-    })();
-    if (!s.rows[idx]?.cookies) {
-      toast("Copy cookie first for account " + (idx + 1));
+    const idx = get().bubbleGetActiveRow();
+    if (s.rows[idx].twofakey) {
+      toast("Row " + (idx + 1) + ": paste cookie");
       return;
     }
     const rows = s.rows.slice();
@@ -1509,7 +1512,12 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
       });
     }
     vibrate(15);
-    toast("2FA " + (idx + 1) + " saved → next account");
+    const complete = !!rows[idx].cookies;
+    toast(
+      complete
+        ? "Row " + (idx + 1) + " done - next cookie"
+        : "Row " + (idx + 1) + ": paste cookie",
+    );
     set({
       rows,
       isDirty: true,
@@ -1520,14 +1528,20 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     const totp = await getCachedTOTP(key);
     if (totp) {
       bubbleWriteClipboardText(totp.code);
-      toast("2FA code copied");
+      toast("2FA copied");
     }
-    get().bubbleAdvanceActiveRow();
+    if (complete) get().bubbleAdvanceActiveRow();
   },
 
   bubbleSkipNo2FA: () => {
     const idx = get().bubbleGetActiveRow();
-    toast("Account " + (idx + 1) + " - no 2FA, skipped");
+    const row = get().rows[idx];
+    const label = row?.cookies
+      ? "2FA skipped"
+      : row?.twofakey
+        ? "cookie skipped"
+        : "skipped";
+    toast("Row " + (idx + 1) + " - " + label);
     vibrate(15);
     get().bubbleAdvanceActiveRow();
   },
