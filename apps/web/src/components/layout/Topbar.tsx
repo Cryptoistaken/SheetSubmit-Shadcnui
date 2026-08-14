@@ -1,11 +1,29 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 
+import BubblePicker from "@/components/bubble/BubblePicker";
 import SheetToolbar from "@/components/sheet/SheetToolbar";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
+import { useToast } from "@/lib/toast";
 import { useSheetStore } from "@/stores/sheetStore";
+
+interface AndroidBridge {
+  isBubbleEnabled?: () => boolean;
+  disableBubble?: () => void;
+  checkForUpdates?: () => void;
+  whatsNew?: () => void;
+  openSupport?: () => void;
+}
+
+function getAndroid(): AndroidBridge | null {
+  try {
+    return (window as unknown as { Android?: AndroidBridge }).Android ?? null;
+  } catch {
+    return null;
+  }
+}
 
 interface ConnState {
   cls: "ok" | "err" | "";
@@ -25,6 +43,12 @@ export default function Topbar() {
   const btnRef = useRef<HTMLButtonElement>(null);
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameName, setRenameName] = useState("");
+  const [isAndroid] = useState(() => !!getAndroid());
+  const [bubbleOn, setBubbleOn] = useState(
+    () => !!getAndroid()?.isBubbleEnabled?.(),
+  );
+  const [bubblePickerOpen, setBubblePickerOpen] = useState(false);
+  const showToast = useToast();
 
   const isFilePage = location.pathname.startsWith("/file/");
   const hideHome = isFilePage ? { display: "none" as const } : undefined;
@@ -184,6 +208,96 @@ export default function Topbar() {
               <span className="toggle-track"></span>
             </label>
           </div>
+          {isAndroid ? (
+            <>
+              <div className="gear-divider"></div>
+              <div className="gear-toggle-row">
+                <div>
+                  <div className="gear-toggle-label">Floating bubble</div>
+                  <div className="gear-toggle-sub">Mini sheet over other apps</div>
+                </div>
+                <label className="toggle-switch">
+                  <input
+                    type="checkbox"
+                    checked={bubbleOn}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setPanelOpen(false);
+                        setBubblePickerOpen(true);
+                      } else {
+                        try {
+                          getAndroid()?.disableBubble?.();
+                        } catch {
+                          // bridge missing
+                        }
+                        setBubbleOn(false);
+                        showToast("Floating bubble off");
+                      }
+                    }}
+                  />
+                  <span className="toggle-track"></span>
+                </label>
+              </div>
+              <div className="gear-divider"></div>
+              <div
+                className="gear-toggle-row"
+                style={{ cursor: "pointer" }}
+                onClick={() => {
+                  try {
+                    getAndroid()?.checkForUpdates?.();
+                  } catch {
+                    // bridge missing
+                  }
+                }}
+              >
+                <div>
+                  <div className="gear-toggle-label">Check for updates</div>
+                  <div className="gear-toggle-sub">
+                    Download and install the latest version
+                  </div>
+                </div>
+                <span style={{ fontSize: 18, lineHeight: 1 }}>{"\u21bb"}</span>
+              </div>
+              <div
+                className="gear-toggle-row"
+                style={{ cursor: "pointer" }}
+                onClick={() => {
+                  try {
+                    getAndroid()?.whatsNew?.();
+                  } catch {
+                    // bridge missing
+                  }
+                }}
+              >
+                <div>
+                  <div className="gear-toggle-label">What's new</div>
+                  <div className="gear-toggle-sub">
+                    Latest changes and improvements
+                  </div>
+                </div>
+                <span style={{ fontSize: 18, lineHeight: 1 }}>{"\u2139"}</span>
+              </div>
+              <div
+                className="gear-toggle-row"
+                style={{ cursor: "pointer" }}
+                onClick={() => {
+                  try {
+                    getAndroid()?.openSupport?.();
+                  } catch {
+                    // bridge missing
+                  }
+                }}
+              >
+                <div>
+                  <div className="gear-toggle-label">Report an issue</div>
+                  <div className="gear-toggle-sub">
+                    Tell us about a problem on Telegram
+                  </div>
+                </div>
+                <span style={{ fontSize: 18, lineHeight: 1 }}>{"\u2709"}</span>
+              </div>
+            </>
+          ) : null}
           <div className="gear-divider"></div>
           <button
             className="btn btn-ghost"
@@ -231,6 +345,13 @@ export default function Topbar() {
           </div>
         </div>
       )}
+      <BubblePicker
+        open={bubblePickerOpen}
+        onClose={() => {
+          setBubblePickerOpen(false);
+          setBubbleOn(!!getAndroid()?.isBubbleEnabled?.());
+        }}
+      />
     </div>
   );
 }

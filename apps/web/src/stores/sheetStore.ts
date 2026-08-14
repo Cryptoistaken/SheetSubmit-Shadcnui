@@ -9,6 +9,7 @@ import {
   type WaCacheEntry,
 } from "@/lib/types";
 import { getFileBehavior } from "@/features/filetypes";
+import { getCachedTOTP } from "@/features/filetypes/totp";
 import { toast } from "@/lib/toast";
 import { vibrate } from "@/lib/utils";
 
@@ -212,6 +213,12 @@ export interface SheetState {
   restoreVersion: (v: number) => Promise<boolean>;
   mergeRows: (incoming: Row[]) => void;
   applyUpload: (mode: "replace" | "append", incoming: Row[]) => void;
+  bubbleActiveRow: number;
+  bubbleGetActiveRow: () => number;
+  bubbleAdvanceActiveRow: () => void;
+  bubbleSaveCookie: (text: string) => void;
+  bubbleSaveKey: (text: string) => Promise<void>;
+  bubbleSkipNo2FA: () => void;
 }
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -242,6 +249,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
   hasDuplicates: false,
   crossDups: {},
   checkRunning: false,
+  bubbleActiveRow: -1,
 
   openFile: async (id) => {
     const seq = ++openSeq;
@@ -1203,6 +1211,137 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     }
     void refreshCrossDups(s.fileId);
   },
+
+  bubbleGetActiveRow: () => {
+    const s = get();
+    if (
+      s.bubbleActiveRow >= 0 &&
+      s.bubbleActiveRow < s.rows.length &&
+      !s.rows[s.bubbleActiveRow].cookies
+    ) {
+      return s.bubbleActiveRow;
+    }
+    for (let i = 0; i < s.rows.length; i++) {
+      if (!s.rows[i].cookies) {
+        set({ bubbleActiveRow: i });
+        return i;
+      }
+    }
+    const rows = s.rows.concat(makeEmptyRow(s.columns));
+    const idx = rows.length - 1;
+    set({ rows, bubbleActiveRow: idx });
+    return idx;
+  },
+
+  bubbleAdvanceActiveRow: () => {
+    const s = get();
+    let idx = s.bubbleActiveRow + 1;
+    let rows = s.rows;
+    while (idx >= rows.length) {
+      rows = rows.concat(makeEmptyRow(s.columns));
+    }
+    set({ bubbleActiveRow: idx, rows });
+  },
+
+  bubbleSaveCookie: (text) => {
+    const s = get();
+    const trimmed = (text || "").trim();
+    const dupe = s.rows.findIndex((r) => (r.cookies ?? "").trim() === trimmed);
+    if (dupe !== -1) {
+      toast("Duplicate cookie - already at row " + (dupe + 1));
+      return;
+    }
+    const idx = get().bubbleGetActiveRow();
+    const rows = s.rows.slice();
+    rows[idx] = { ...rows[idx], cookies: text };
+    const newInvalid = new Set(s.invalidCells);
+    const behavior = getFileBehavior(s.file?.type ?? "fb_cookie");
+    if (behavior?.onCellChange) {
+      behavior.onCellChange({
+        rows,
+        rowIdx: idx,
+        colKey: "cookies",
+        value: text,
+        invalidCells: newInvalid,
+        showToast: toast,
+      });
+    }
+    vibrate(15);
+    toast(
+      "Cookie " + (idx + 1) + " saved - now copy 2FA key or double-tap dot to skip",
+    );
+    set({
+      rows,
+      isDirty: true,
+      invalidCells: newInvalid,
+      ...recomputeMarks(rows, s.crossDups, s.columns),
+    });
+    get().persist("bubble");
+  },
+
+  bubbleSaveKey: async (text) => {
+    const key = normalizeBubbleKey(text);
+    const s = get();
+    for (let i = 0; i < s.rows.length; i++) {
+      const k = s.rows[i].twofakey ? normalizeBubbleKey(s.rows[i].twofakey) : "";
+      if (k === key) {
+        toast("Duplicate 2FA key - already at row " + (i + 1));
+        return;
+      }
+    }
+    const idx = (() => {
+      const ar = s.bubbleActiveRow;
+      if (
+        ar >= 0 &&
+        ar < s.rows.length &&
+        s.rows[ar].cookies &&
+        !s.rows[ar].twofakey
+      ) {
+        return ar;
+      }
+      return get().bubbleGetActiveRow();
+    })();
+    if (!s.rows[idx]?.cookies) {
+      toast("Copy cookie first for account " + (idx + 1));
+      return;
+    }
+    const rows = s.rows.slice();
+    rows[idx] = { ...rows[idx], twofakey: key };
+    const newInvalid = new Set(s.invalidCells);
+    const behavior = getFileBehavior(s.file?.type ?? "fb_cookie");
+    if (behavior?.onCellChange) {
+      behavior.onCellChange({
+        rows,
+        rowIdx: idx,
+        colKey: "twofakey",
+        value: key,
+        invalidCells: newInvalid,
+        showToast: toast,
+      });
+    }
+    vibrate(15);
+    toast("2FA " + (idx + 1) + " saved → next account");
+    set({
+      rows,
+      isDirty: true,
+      invalidCells: newInvalid,
+      ...recomputeMarks(rows, s.crossDups, s.columns),
+    });
+    get().persist("bubble");
+    const totp = await getCachedTOTP(key);
+    if (totp) {
+      bubbleWriteClipboardText(totp.code);
+      toast("2FA code copied");
+    }
+    get().bubbleAdvanceActiveRow();
+  },
+
+  bubbleSkipNo2FA: () => {
+    const idx = get().bubbleGetActiveRow();
+    toast("Account " + (idx + 1) + " - no 2FA, skipped");
+    vibrate(15);
+    get().bubbleAdvanceActiveRow();
+  },
 }));
 
 async function refreshCrossDups(fileId: string | null) {
@@ -1218,6 +1357,26 @@ async function refreshCrossDups(fileId: string | null) {
   } catch {
     // swallow
   }
+}
+
+// ── Bubble (Android mini-window) helpers ──
+
+function bubbleWriteClipboardText(t: string) {
+  try {
+    const android = (window as unknown as { Android?: { writeClipboard?: (v: string) => void } }).Android;
+    if (android?.writeClipboard) {
+      android.writeClipboard(String(t));
+      return;
+    }
+  } catch {
+    // fall through to the web clipboard API (shimmed by the Android bridge)
+  }
+  navigator.clipboard.writeText(t).catch(() => {});
+}
+
+/** Normalize a 2FA key: strip spaces/dashes, uppercase (old normalizeKey). */
+export function normalizeBubbleKey(t: string | null | undefined): string {
+  return (t || "").replace(/[\s\-]/g, "").toUpperCase();
 }
 
 function applyCells(

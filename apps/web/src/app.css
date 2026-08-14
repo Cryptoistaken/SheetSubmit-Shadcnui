@@ -2538,3 +2538,70 @@ body.is-touch table.grid td.dc { overflow: visible; }
 @media (hover: none) and (pointer: coarse) {
     #versionOverlay .modal-box .vnum { min-width: 28px; }
 }
+
+/* ── Phase 5: floating bubble mini-window (port of old css/bubble.css) ── */
+
+body.bubble-mode {
+    background: var(--bg);
+}
+
+body.bubble-mode .topbar {
+    display: flex !important;
+    height: 40px;
+}
+
+body.bubble-mode .sheet-view {
+    display: flex !important;
+    flex-direction: column;
+    position: fixed;
+    inset: 40px 0 0 0;
+}
+
+body.bubble-mode .sheet-wrap { flex: 1; }
+
+/* ? menu must stay inside the small mini window */
+body.bubble-mode .sheet-more-menu {
+    top: 44px !important;
+    bottom: auto !important;
+    right: 8px !important;
+    max-height: calc(100vh - 56px) !important;
+    overflow-y: auto !important;
+}
+
+/* Quick-edit pill - 30% smaller (scaled down) in bubble mode */
+body.bubble-mode .qeb-bar {
+    left: auto !important;
+    right: 8px !important;
+    bottom: 8px !important;
+    top: auto !important;
+    z-index: 700;
+    transform: scale(0.6);
+    transform-origin: bottom right;
+}
+
+/* Compact grid for the small window - native scale, sized to fit */
+body.bubble-mode table.grid tbody tr { contain-intrinsic-size: 24px; }
+body.bubble-mode table.grid th.corner,
+body.bubble-mode table.grid th.rh { width: 26px; min-width: 26px; height: 24px; font-size: 10px; }
+body.bubble-mode table.grid th.ch { height: 24px; font-size: 10px; }
+body.bubble-mode table.grid th.ch-dot { width: 26px; min-width: 26px; height: 24px; font-size: 10px; }
+body.bubble-mode table.grid td.dc { height: 24px; }
+body.bubble-mode table.grid td.dc .cell-text { font-size: 11px; line-height: 1.15; }
+body.bubble-mode table.grid td.dot-cell { padding: 0 6px; }
+body.bubble-mode .row-dot { width: 8px; height: 8px; }
+body.bubble-mode tr.add-row td { height: 24px; }
+body.bubble-mode tr.add-row .add-col { font-size: 11px; }
+
+/* File picker list inside the bubble modal (reuses .home-fab-item rows) */
+.bubble-picker {
+    max-height: 45vh;
+    overflow-y: auto;
+    margin: 2px -4px;
+}
+
+.bubble-picker-empty {
+    font-size: 13px;
+    color: var(--text3);
+    text-align: center;
+    padding: 14px 4px;
+}
