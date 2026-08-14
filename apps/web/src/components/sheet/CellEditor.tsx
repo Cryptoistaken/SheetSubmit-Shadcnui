@@ -1,16 +1,11 @@
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import type { KeyboardEvent } from "react";
 
 import { useSheetStore } from "@/stores/sheetStore";
 
 export default function CellEditor() {
   const draft = useSheetStore((s) => s.draft);
-  const qebOpen = useSheetStore((s) => s.qebOpen);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (qebOpen) inputRef.current?.focus();
-  }, [qebOpen]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     const store = useSheetStore.getState();

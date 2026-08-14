@@ -54,7 +54,7 @@ export default function SheetToolbar() {
   const checkArrowRef = useRef<HTMLButtonElement>(null);
   const checkMenuRef = useRef<HTMLDivElement>(null);
   const [autoCheckOn, setAutoCheckOn] = useState(
-    () => localStorage.getItem("ss_autoCheck") === "true",
+    () => localStorage.getItem("ss_autoCheck") !== "false",
   );
   const [waCheckOn, setWaCheckOn] = useState(
     () => localStorage.getItem("ss_waCheck") === "true",

@@ -305,6 +305,11 @@ public class FloatingBubbleService extends Service {
                         LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f);
                 card.addView(miniWebView, wlp);
                 miniWebView.onResume();
+                panelRoot.requestFocus();
+                if (miniWebView != null) miniWebView.requestFocus();
+                try {
+                    miniWebView.evaluateJavascript("window.__ss&&window.__ss.bubbleAutomate&&window.__ss.bubbleAutomate();", null);
+                } catch (Exception ignored) {}
                 try {
                     Intent cap = new Intent(this, ClipboardCaptureActivity.class);
                     cap.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -335,8 +340,6 @@ public class FloatingBubbleService extends Service {
                     boolean captured = clipAt > 0 && System.currentTimeMillis() - clipAt < 2000;
                     if (captured || pollCount[0] >= 10) {
                         try {
-                            panelRoot.requestFocus();
-                            if (miniWebView != null) miniWebView.requestFocus();
                             miniWebView.evaluateJavascript("window.__ss&&window.__ss.bubbleAutomate&&window.__ss.bubbleAutomate();", null);
                         } catch (Exception ignored) {}
                     } else {
@@ -377,19 +380,7 @@ public class FloatingBubbleService extends Service {
     }
 
     private void ensureMiniWebView() {
-        if (miniWebView != null) {
-            try {
-                String url = miniWebView.getUrl();
-                // hidePanel() unloads about:blank — a reused WebView would
-                // show a blank page on the next open, so recreate it.
-                if (url != null && !url.equals("about:blank")) return;
-                try { miniWebView.destroy(); } catch (Exception ignored) {}
-                miniWebView = null;
-            } catch (Exception e) {
-                try { miniWebView.destroy(); } catch (Exception ignored) {}
-                miniWebView = null;
-            }
-        }
+        if (miniWebView != null) return;
         try {
             miniWebView = new WebView(this);
             miniWebView.setBackgroundColor(0x00000000);
@@ -462,7 +453,6 @@ public class FloatingBubbleService extends Service {
 
     private void hidePanel() {
         if (miniWebView != null) {
-            try { miniWebView.loadUrl("about:blank"); } catch (Exception ignored) {}
             try { miniWebView.onPause(); } catch (Exception ignored) {}
         }
         if (panelRoot != null) {

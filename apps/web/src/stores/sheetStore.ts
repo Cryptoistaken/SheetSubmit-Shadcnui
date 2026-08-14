@@ -20,12 +20,17 @@ export interface CellDelta {
   prevVal: string;
 }
 
+export interface CellBatchDelta {
+  type: "cells";
+  deltas: CellDelta[];
+}
+
 export interface RowsDelta {
   type: "rows";
   prevRows: Row[];
 }
 
-export type UndoEntry = CellDelta | RowsDelta;
+export type UndoEntry = CellDelta | CellBatchDelta | RowsDelta;
 
 export interface SelectedCell {
   rowIdx: number;
@@ -102,17 +107,6 @@ function recomputeMarks(
   });
 
   return { dupCells, dupRows, crossDupRows, hasDuplicates: dupCells.size > 0 };
-}
-
-function pushUndoCell(
-  undoStack: UndoEntry[],
-  rowIdx: number,
-  colKey: string,
-  prevVal: string,
-): { undoStack: UndoEntry[]; redoStack: UndoEntry[] } {
-  const undo: UndoEntry[] = [...undoStack, { rowIdx, colKey, prevVal }];
-  if (undo.length > 100) undo.shift();
-  return { undoStack: undo, redoStack: [] };
 }
 
 function updateSelFlags(
@@ -378,6 +372,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     if (!row) return;
     const prevVal = row[colKey] ?? "";
     if (value === prevVal) return;
+    const prevRow = { ...row };
     const newRows = s.rows.slice();
     newRows[rowIdx] = { ...row, [colKey]: value };
     const behavior = getFileBehavior(s.file?.type ?? "fb_cookie");
@@ -392,16 +387,26 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
         showToast: toast,
       });
     }
-    const { undoStack, redoStack } = pushUndoCell(
-      s.undoStack,
-      rowIdx,
-      colKey,
-      prevVal,
-    );
+    // A single edit may change multiple columns of the same row (e.g. pasting a
+    // cookie also autofills the uid cell via onCellChange). Record ONE undo
+    // entry covering all of them so undo/redo act as a single interaction.
+    const deltas: CellDelta[] = [];
+    s.columns.forEach((c) => {
+      const before = prevRow[c.key] ?? "";
+      const after = newRows[rowIdx][c.key] ?? "";
+      if (before !== after) {
+        deltas.push({ rowIdx, colKey: c.key, prevVal: before });
+      }
+    });
+    if (!deltas.length) deltas.push({ rowIdx, colKey, prevVal });
+    const undoStack: UndoEntry[] = [...s.undoStack];
+    if (deltas.length > 1) undoStack.push({ type: "cells", deltas });
+    else undoStack.push(deltas[0]);
+    if (undoStack.length > 100) undoStack.shift();
     set({
       rows: newRows,
       undoStack,
-      redoStack,
+      redoStack: [],
       isDirty: true,
       invalidCells: newInvalid,
       ...recomputeMarks(newRows, s.crossDups, s.columns),
@@ -464,7 +469,20 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     if (!delta) return;
     const redoStack = s.redoStack.slice();
     let rows = s.rows;
-    if ("type" in delta) {
+    if ("type" in delta && delta.type === "cells") {
+      const redoDeltas: CellDelta[] = [];
+      const newRows = rows.slice();
+      delta.deltas.forEach((d) => {
+        const row = newRows[d.rowIdx];
+        const currentVal = row ? (row[d.colKey] ?? "") : "";
+        redoDeltas.push({ rowIdx: d.rowIdx, colKey: d.colKey, prevVal: currentVal });
+        if (row) {
+          newRows[d.rowIdx] = { ...row, [d.colKey]: d.prevVal };
+        }
+      });
+      redoStack.push({ type: "cells", deltas: redoDeltas });
+      rows = newRows;
+    } else if ("type" in delta) {
       redoStack.push({ type: "rows", prevRows: rows.map((r) => ({ ...r })) });
       rows = delta.prevRows.map((r) => ({ ...r }));
     } else {
@@ -500,7 +518,20 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     if (!delta) return;
     const undoStack = s.undoStack.slice();
     let rows = s.rows;
-    if ("type" in delta) {
+    if ("type" in delta && delta.type === "cells") {
+      const undoDeltas: CellDelta[] = [];
+      const newRows = rows.slice();
+      delta.deltas.forEach((d) => {
+        const row = newRows[d.rowIdx];
+        const currentVal = row ? (row[d.colKey] ?? "") : "";
+        undoDeltas.push({ rowIdx: d.rowIdx, colKey: d.colKey, prevVal: currentVal });
+        if (row) {
+          newRows[d.rowIdx] = { ...row, [d.colKey]: d.prevVal };
+        }
+      });
+      undoStack.push({ type: "cells", deltas: undoDeltas });
+      rows = newRows;
+    } else if ("type" in delta) {
       undoStack.push({ type: "rows", prevRows: rows.map((r) => ({ ...r })) });
       rows = delta.prevRows.map((r) => ({ ...r }));
     } else {
@@ -1073,7 +1104,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
   maybeAutoCheck: (_rowIdx, colKey) => {
     const s = get();
     if (s.checkRunning) return;
-    if (localStorage.getItem("ss_autoCheck") !== "true") return;
+    if (localStorage.getItem("ss_autoCheck") === "false") return;
     const behavior = getFileBehavior(s.file?.type ?? "fb_cookie");
     if (!behavior?.checkAccounts) return;
     if (colKey !== "cookies") return;

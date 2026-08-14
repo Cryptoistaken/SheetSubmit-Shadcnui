@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
+import { getInitialTheme } from "@/lib/theme";
 
 export default function LoginScreen() {
   const [label, setLabel] = useState("Connecting...");
   const [href, setHref] = useState<string | null>(null);
+  const [dark] = useState(() => getInitialTheme() === "dark");
 
   useEffect(() => {
     api
@@ -25,9 +27,15 @@ export default function LoginScreen() {
       <div className="login-wrap">
         <div className="login-card">
           <div className="login-logo">
-            <img src="/logo-dark.svg" alt="Sheet Submit" style={{ width: 48, height: 48 }} />
+            <img
+              src={dark ? "/logo-light.svg" : "/logo-dark.svg"}
+              alt="Sheet Submit"
+              style={{ width: 48, height: 48 }}
+            />
           </div>
-          <h1>Login to Sheet Submit</h1>
+          <h1>
+            Login to <span className="login-brand">Sheet Submit</span>
+          </h1>
           <a
             className={`login-btn${href ? " ready" : " loading"}`}
             href={href ?? "#"}

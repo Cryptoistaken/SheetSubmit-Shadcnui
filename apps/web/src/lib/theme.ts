@@ -9,9 +9,9 @@ export function getInitialTheme(): Theme {
     const stored = localStorage.getItem(THEME_KEY);
     if (stored === "dark" || stored === "light") return stored;
   } catch {
-    // ignore — fall through to system preference
+    // ignore — fall through to default
   }
-  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  return "light";
 }
 
 export function useTheme() {

@@ -192,6 +192,9 @@ button, input, select, textarea {
     font-family: var(--sans);
     color: var(--text);
 }
+.login-card h1 .login-brand {
+    color: var(--blue);
+}
 .login-btn {
     display: inline-flex;
     align-items: center;
@@ -2579,6 +2582,9 @@ body.bubble-mode .sheet-view {
 
 body.bubble-mode .sheet-wrap { flex: 1; }
 
+/* Check button hidden in the mini window (auto-check stays enabled) */
+body.bubble-mode .check-split-wrap { display: none !important; }
+
 /* ? menu must stay inside the small mini window */
 body.bubble-mode .sheet-more-menu {
     top: 44px !important;
@@ -2588,28 +2594,28 @@ body.bubble-mode .sheet-more-menu {
     overflow-y: auto !important;
 }
 
-/* Quick-edit pill - 30% smaller (scaled down) in bubble mode */
+/* Quick-edit pill - 30% smaller (scaled down), centered in the mini window */
 body.bubble-mode .qeb-bar {
-    left: auto !important;
-    right: 8px !important;
-    bottom: 8px !important;
-    top: auto !important;
+    left: 50% !important;
+    right: auto !important;
+    top: 50% !important;
+    bottom: auto !important;
     z-index: 700;
-    transform: scale(0.6);
-    transform-origin: bottom right;
+    transform: translate(-50%, -50%) scale(0.6);
+    transform-origin: center;
 }
 
 /* Compact grid for the small window - native scale, sized to fit */
-body.bubble-mode table.grid tbody tr { contain-intrinsic-size: 24px; }
+body.bubble-mode table.grid tbody tr { contain-intrinsic-size: 22px; }
 body.bubble-mode table.grid th.corner,
-body.bubble-mode table.grid th.rh { width: 26px; min-width: 26px; height: 24px; font-size: 10px; }
-body.bubble-mode table.grid th.ch { height: 24px; font-size: 10px; }
-body.bubble-mode table.grid th.ch-dot { width: 26px; min-width: 26px; height: 24px; font-size: 10px; }
-body.bubble-mode table.grid td.dc { height: 24px; }
+body.bubble-mode table.grid th.rh { width: 20px; min-width: 20px; height: 22px; font-size: 9px; }
+body.bubble-mode table.grid th.ch { height: 22px; font-size: 9px; }
+body.bubble-mode table.grid th.ch-dot { width: 20px; min-width: 20px; height: 22px; font-size: 9px; }
+body.bubble-mode table.grid td.dc { height: 22px; }
 body.bubble-mode table.grid td.dc .cell-text { font-size: 11px; line-height: 1.15; }
-body.bubble-mode table.grid td.dot-cell { padding: 0 6px; }
-body.bubble-mode .row-dot { width: 8px; height: 8px; }
-body.bubble-mode tr.add-row td { height: 24px; }
+body.bubble-mode table.grid td.dot-cell { padding: 0 4px; }
+body.bubble-mode .row-dot { width: 6px; height: 6px; }
+body.bubble-mode tr.add-row td { height: 22px; }
 body.bubble-mode tr.add-row .add-col { font-size: 11px; }
 
 /* File picker list inside the bubble modal (reuses .home-fab-item rows) */
