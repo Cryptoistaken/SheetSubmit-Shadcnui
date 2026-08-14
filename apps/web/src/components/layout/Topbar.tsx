@@ -43,12 +43,25 @@ export default function Topbar() {
   const btnRef = useRef<HTMLButtonElement>(null);
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameName, setRenameName] = useState("");
-  const [isAndroid] = useState(() => !!getAndroid());
+  const [isAndroid, setIsAndroid] = useState(() => !!getAndroid());
   const [bubbleOn, setBubbleOn] = useState(
     () => !!getAndroid()?.isBubbleEnabled?.(),
   );
   const [bubblePickerOpen, setBubblePickerOpen] = useState(false);
   const showToast = useToast();
+
+  // The Android bridge can register after first paint (old bubble.js re-checked
+  // on window load) — re-sync so Android-only gear rows appear if it arrives late.
+  useEffect(() => {
+    const onLoad = () => {
+      if (getAndroid()) {
+        setIsAndroid(true);
+        setBubbleOn(!!getAndroid()?.isBubbleEnabled?.());
+      }
+    };
+    window.addEventListener("load", onLoad);
+    return () => window.removeEventListener("load", onLoad);
+  }, []);
 
   const isFilePage = location.pathname.startsWith("/file/");
   const hideHome = isFilePage ? { display: "none" as const } : undefined;

@@ -1,0 +1,9 @@
+node_modules
+apps/web/dist
+.git
+.env
+.env.*
+*.log
+.playwright-mcp
+Dockerfile
+.dockerignore
