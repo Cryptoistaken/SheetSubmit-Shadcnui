@@ -101,7 +101,45 @@ SheetSubmit-Shadcnui/
 ## 4. Handoff — where we left off & how to resume from any state
 
 ### Last state (as of last update)
-- **Phase 3 (Sheet engine) complete — commit `6becf75`.**
+- **Phase 3 parity-fix pass — commit `f0b7783` (after `6becf75`).** User reported the sheet
+  "looks broken / missing things / behavior differs" vs the old HTML app. Two read-only
+  parity audits (CSS/layout + behavior) found and fixed:
+  - **FONTS (the big one — root cause of "looks broken"):** `--sans`/`--mono` referenced
+    `'Geist Sans'`/`'Geist Mono'` which were NEVER loaded → whole app rendered in system
+    fonts. Fix: `@fontsource-variable/geist-mono` added; `--sans` → `'Geist Variable'`,
+    `--mono` → `'Geist Mono Variable'` (both loaded via index.css).
+  - **Sheet-screen topbar parity:** old `openFile` hides logo, "Sheet Submit" title,
+    conn-status pill and gear/profile button on the sheet screen (`sheet.js:53-57`); the
+    new Topbar showed all of them. Now hidden via `style={{display:"none"}}` when
+    `isFilePage` (health polling keeps running; gear panel closes on entering the file page).
+  - **Sheet title button now opens the Rename modal** (old `sheet.js:2203`); commit →
+    `PUT /files/:id` + store `file.name` update. Truncation uses `'...'` (old) not `'…'`.
+  - **Check split button + dropdown now implemented** (was deferred; old app SHOWS it for
+    fb_cookie — `checkBtnGroup` gated on `behavior.checkAccounts`): blue "Check" pill +
+    chevron, `data-check="checking"` + `Checking...` label, `.warning` (amber) when dups,
+    dropdown with **Auto-check toggle (functional: `ss_autoCheck` + `maybeAutoCheck` on
+    cookies commit → `runCheck()`)** + admin-only "Page Check" section (persists
+    `ss_waCheck`; actual WA flow still Phase 4). `runCheck()` ported: dup/invalid guards,
+    rows-undo snapshot (`{type:'rows'}`), statuses via `behavior.checkAccounts`, apiLogs
+    entries, `persist('check')`, result toast. Verified `/api/fb/check` works with the
+    seeded session (returns `{valid,dead,uncertain}`).
+  - **More menu now matches old item list:** Copy all data, Download xlsx, Upload xlsx,
+    Merge, Versions (Phase-4 items show a "… — Phase 4" toast), separator, column toggles
+    — with the old 14px inline SVG icons.
+  - **Undo/redo glyphs:** old 18px SVG arrows (quoted from `index.html:190-195`) replace
+    the `↺/↻` text glyphs.
+  - **`#sheetView` port:** new `.sheet-view` class (flex:1 column, `min-height:0`,
+    `overflow:hidden`, `position:relative`) replaces the ad-hoc Tailwind classes on the
+    SheetPage root. `body.is-touch table.grid td.dc {overflow:visible}` ported (touch.css).
+  - **Deferred still (documented):** Sync button (hidden in old for fb_cookie — no
+    `syncRow`), WA check flow + auto-check Page-Check backend (Phase 4), real
+    download/upload/merge/versions flows (Phase 4), log-popup cross-file-dup/WA sections
+    (Phase 4). `--green` token stays real green `#16a34a` (PLAN §2 deliberate fix — old
+    was teal; the conn pill/log status colors differ from old BY DESIGN).
+  - Verified: web `tsc` + `vite build` clean (Geist Mono woff2s now in the bundle);
+    `/api/fb/check` + auth OK on the smoke env. **Browser re-verification is the user's**
+    — see checklist below.
+- **Phase 3 (Sheet engine) complete — commit `6becf75`:**
   - `stores/sheetStore.ts` (zustand, ~900 ln): faithful port of old `sheet.js` state machine —
     openFile (4 parallel fetches + cross-dups, 100-row pad, `ss_cols_<id>` visible cols),
     commitCell (single commit pipeline: immutable row update → `onCellChange` → dup/invalid
@@ -292,6 +330,20 @@ cd /b/Studio/Tools/SheetSubmit && bun run   # starts old Express server
 - **Build UI from shadcn pre-built components (https://ui.shadcn.com/docs), modify — don't hand-roll.** Before writing any new UI, check the shadcn catalog for a ready component (Button, Input, Dialog, DropdownMenu, Tooltip, Skeleton, Table, etc.), `npx shadcn@latest add <name>` it, then customize minimally (className/variants/composition, Geist tokens). Exception: old-app-specific widgets whose pixel-parity CSS is already ported to `app.css` (grid table/cells, QEB, sel-bar, log-popup, sheet-more-menu, row-dots) stay custom — re-styling shadcn primitives to match would cost more than ported CSS. Phase 4+ overlays (version modal, download filter dialog, upload/merge, admin) should use shadcn Dialog/DropdownMenu/Input as their base.
 - **Boneyard capture recipe (Phase 3+):** deps: `boneyard-js` (Vite plugin, `skipInitial: true` — no browser at dev-start). To (re)capture grid skeleton bones: (1) run the seeded-Redis server + `bun run dev:web`; (2) `boneyard.config.json` (apps/web) must hold `auth.cookies` with a `path: "/"` — **missing `path` makes the CLI crash** with "Cookie should have a url or a domain/path pair"; cookie value must match a seeded `ss:session:<value>`; (3) `cd apps/web && npx boneyard-js build http://localhost:5173/file/<id> --out ./src/bones` → writes `<name>.bones.json` + regenerates `registry.ts` (it imports `registerBones` from `'boneyard-js'` root, NOT `/react`). Commit both. The generated registry is a build input — `vite build` fails if `src/bones/registry.ts` is missing.
 - **`<Skeleton>` only marks while mounted:** SheetPage returns the boneyard skeleton for `status !== ready` AND adds a `__BONEYARD_BUILD`-mode branch that renders the skeleton+fixture even after load, so the capture always finds the `[data-boneyard]` marker. Without that branch the marker unmounts before the capture snapshots (0 skeletons captured).
+- **Fonts must stay loaded:** `--sans`/`--mono` in `app.css` point at `'Geist Variable'` /
+  `'Geist Mono Variable'` (loaded via `@fontsource-variable/geist` + `geist-mono` imports
+  in `index.css`). If anyone renames the tokens back to `'Geist Sans'`/`'Geist Mono'` the
+  app silently falls back to system fonts (the "looks broken" bug from the Phase-3 parity pass).
+- **Topbar on the sheet screen:** old app hides logo / home title / conn pill / gear button
+  (`sheet.js:53-57`); Topbar mirrors that with `display:none` when `isFilePage`. The health
+  poll keeps running. The sheet-title button opens the rename modal (store `file.name`
+  update via `useSheetStore.setState`).
+- **Check button is part of Phase 3** (old shows it for fb_cookie): `runCheck()` in the
+  store (dup/invalid guards, rows-undo snapshot, `checkAccounts`, apiLogs entries,
+  `persist('check')`, toast) + Auto-check via `ss_autoCheck` + `maybeAutoCheck` on cookies
+  commit. Remaining check-related Phase-4 work: WA follow-up (`runWaChecks`, `/fb/wa-check`
+  + `ss:wa:` cache — the admin "Page Check" toggle already persists `ss_waCheck` but is a
+  no-op until then) and the Sync button (hidden for fb_cookie anyway).
 - **Sheet toolbar vs gear panel:** the ⋮ (`sheet-more-btn`) handler must NOT `stopPropagation()` — if it does, Topbar's click-outside listener never fires and the gear panel stays open, overlapping the more menu (gear z-800 > menu z-600) and intercepting clicks. SheetToolbar's own doc listener exempts the ⋮ button + menu via `contains()`. If both menus change, retest the overlap.
 - **QEB draft vs other cells:** the live-preview draft lives in the store; only the ACTIVE `GridCell` subscribes to it (selector returns `null` for other cells) so typing re-renders exactly one cell. Rows must be updated immutably (row object replaced) or memo'd cells never re-render.
 - **`Row` type widened** to `Record<string, string | null | undefined>` in BOTH `apps/web/src/lib/types.ts` and `packages/shared/src/types.ts` (real data has `wa_ban_reason: null`; old type would crash at runtime on `null`).
