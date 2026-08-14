@@ -19,6 +19,7 @@ import android.os.Looper;
 import android.os.Message;
 import android.provider.Settings;
 import android.util.Log;
+import android.view.ViewGroup;
 import android.webkit.CookieManager;
 import android.webkit.DownloadListener;
 import android.webkit.JavascriptInterface;
@@ -27,6 +28,9 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.LinearLayout;
+import android.widget.ProgressBar;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import org.json.JSONObject;
@@ -39,6 +43,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.Locale;
 import java.util.UUID;
 
 public class MainActivity extends Activity {
@@ -47,13 +52,22 @@ public class MainActivity extends Activity {
     private static final String TAG = "SheetSubmit";
     private static final int REQ_OVERLAY_PERMISSION = 2001;
     private static final int REQ_NOTIFICATION_PERMISSION = 2002;
+    private static final int REQ_FILE_CHOOSER = 2003;
+    private static final int REQ_UNKNOWN_APP_SOURCES = 2004;
+    private static final int UPDATE_RETRIES = 2;
+    private static final int DOWNLOAD_CONNECT_TIMEOUT = 30000;
+    private static final int DOWNLOAD_READ_TIMEOUT = 300000;
 
     private WebView webView;
     private String did;
     private boolean sessionApplied = false;
     private final Handler pollHandler = new Handler(Looper.getMainLooper());
     private ValueCallback<Uri[]> filePathCallback;
-    private static final int REQ_FILE_CHOOSER = 2003;
+    private AlertDialog progressDialog;
+    private ProgressBar progressBar;
+    private TextView progressText;
+    private String pendingApkUrl;
+    private long pendingApkSize;
 
     private final Runnable pollRunnable = new Runnable() {
         @Override
@@ -261,7 +275,7 @@ public class MainActivity extends Activity {
                                     b.setPositiveButton("Update", new DialogInterface.OnClickListener() {
                                         @Override
                                         public void onClick(DialogInterface d, int which) {
-                                            downloadUpdate(apkUrl);
+                                            launchDownload(apkUrl, asset.optLong("size"));
                                         }
                                     });
                                     b.setNegativeButton("Later", null);
@@ -346,7 +360,7 @@ public class MainActivity extends Activity {
     }
 
     private void fetchLatestRelease(final ReleaseListener listener) {
-        final String releasesUrl = "https://api.github.com/repos/Cryptoistaken/SheetSubmit/releases/latest";
+        final String releasesUrl = "https://api.github.com/repos/" + Config.GITHUB_REPO + "/releases/latest";
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -491,65 +505,177 @@ public class MainActivity extends Activity {
         FloatingBubbleService.start(this);
     }
 
-    private void downloadUpdate(final String apkUrl) {
-        final File target = new File(getCacheDir(), "apk/update.apk");
-        Toast.makeText(this, "Downloading…", Toast.LENGTH_SHORT).show();
+    private void launchDownload(final String apkUrl, final long sizeBytes) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !getPackageManager().canRequestPackageInstalls()) {
+            pendingApkUrl = apkUrl;
+            pendingApkSize = sizeBytes;
+            new AlertDialog.Builder(this)
+                    .setTitle("Allow installing updates?")
+                    .setMessage("SheetSubmit needs to install the update. You'll be taken to Settings to allow \"Install unknown apps\" for SheetSubmit — this is required only once.")
+                    .setPositiveButton("Allow", new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface d, int which) {
+                            try {
+                                startActivityForResult(new Intent(
+                                        Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                        Uri.parse("package:" + getPackageName())), REQ_UNKNOWN_APP_SOURCES);
+                            } catch (Exception e) {
+                                startDownload(apkUrl, sizeBytes);
+                            }
+                        }
+                    })
+                    .setNegativeButton("Cancel", null)
+                    .show();
+        } else {
+            startDownload(apkUrl, sizeBytes);
+        }
+    }
+
+    private void startDownload(final String apkUrl, final long totalBytes) {
+        showProgressDialog(totalBytes);
         new Thread(new Runnable() {
             @Override
             public void run() {
-                HttpURLConnection conn = null;
-                InputStream is = null;
-                FileOutputStream fos = null;
-                try {
-                    URL u = new URL(apkUrl);
-                    conn = (HttpURLConnection) u.openConnection();
-                    conn.setConnectTimeout(8000);
-                    conn.setReadTimeout(8000);
-                    conn.setRequestProperty("User-Agent", "SheetSubmit-Updater");
-                    conn.setRequestMethod("GET");
-                    if (conn.getResponseCode() != 200) throw new IOException("HTTP " + conn.getResponseCode());
-                    is = conn.getInputStream();
-                    File dir = target.getParentFile();
-                    if (dir != null && !dir.exists()) dir.mkdirs();
-                    if (target.exists()) target.delete();
-                    fos = new FileOutputStream(target);
-                    byte[] buf = new byte[8192];
-                    int n;
-                    while ((n = is.read(buf)) != -1) fos.write(buf, 0, n);
-                    fos.flush();
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            try {
-                                Intent intent = new Intent(Intent.ACTION_VIEW);
-                                intent.setDataAndType(ApkProvider.uriFor(MainActivity.this, target), "application/vnd.android.package-archive");
-                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                                startActivity(intent);
-                            } catch (Exception e) {
-                                Toast.makeText(MainActivity.this, "Cannot open installer", Toast.LENGTH_LONG).show();
+                Exception last = null;
+                for (int attempt = 0; attempt < UPDATE_RETRIES; attempt++) {
+                    HttpURLConnection conn = null;
+                    InputStream is = null;
+                    FileOutputStream fos = null;
+                    try {
+                        File dir = new File(getCacheDir(), "apk");
+                        if (!dir.exists()) dir.mkdirs();
+                        final File target = new File(dir, "update.apk");
+                        if (target.exists()) target.delete();
+                        URL u = new URL(apkUrl);
+                        conn = (HttpURLConnection) u.openConnection();
+                        conn.setConnectTimeout(DOWNLOAD_CONNECT_TIMEOUT);
+                        conn.setReadTimeout(DOWNLOAD_READ_TIMEOUT);
+                        conn.setRequestProperty("User-Agent", "SheetSubmit-Updater");
+                        conn.setRequestMethod("GET");
+                        int code = conn.getResponseCode();
+                        if (code != 200) throw new IOException("Download failed (HTTP " + code + ")");
+                        is = conn.getInputStream();
+                        fos = new FileOutputStream(target);
+                        byte[] buf = new byte[8192];
+                        long downloaded = 0;
+                        int n;
+                        int lastPct = -1;
+                        while ((n = is.read(buf)) != -1) {
+                            fos.write(buf, 0, n);
+                            downloaded += n;
+                            if (totalBytes > 0) {
+                                final int pct = (int) (downloaded * 100 / totalBytes);
+                                if (pct != lastPct) {
+                                    lastPct = pct;
+                                    final long dl = downloaded;
+                                    runOnUiThread(new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            updateProgress(pct, dl, totalBytes);
+                                        }
+                                    });
+                                }
                             }
                         }
-                    });
-                } catch (Exception e) {
-                    Log.e(TAG, "update download: " + e.getMessage());
-                    final String err = e.getMessage() == null ? "Download failed" : e.getMessage();
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            Toast.makeText(MainActivity.this, err, Toast.LENGTH_LONG).show();
+                        fos.flush();
+                        fos.close();
+                        fos = null;
+                        is.close();
+                        is = null;
+                        conn.disconnect();
+                        conn = null;
+                        final File apk = target;
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                dismissProgress();
+                                openInstaller(apk);
+                            }
+                        });
+                        return;
+                    } catch (Exception e) {
+                        last = e;
+                        if (fos != null) {
+                            try { fos.close(); } catch (Exception ignored) {}
                         }
-                    });
-                } finally {
-                    if (fos != null) {
-                        try { fos.close(); } catch (Exception ignored) {}
+                        if (is != null) {
+                            try { is.close(); } catch (Exception ignored) {}
+                        }
+                        if (conn != null) conn.disconnect();
+                        if (attempt < UPDATE_RETRIES - 1) {
+                            try {
+                                Thread.sleep(1000L * (attempt + 1));
+                            } catch (InterruptedException ie) {
+                                Thread.currentThread().interrupt();
+                            }
+                        }
                     }
-                    if (is != null) {
-                        try { is.close(); } catch (Exception ignored) {}
-                    }
-                    if (conn != null) conn.disconnect();
                 }
+                final String err = last != null && last.getMessage() != null ? last.getMessage() : "Update failed";
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        dismissProgress();
+                        Toast.makeText(MainActivity.this, err, Toast.LENGTH_LONG).show();
+                    }
+                });
             }
         }).start();
+    }
+
+    private void showProgressDialog(long totalBytes) {
+        float density = getResources().getDisplayMetrics().density;
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        int pad = (int) (16 * density);
+        layout.setPadding(pad, pad, pad, pad);
+        ProgressBar bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        bar.setMax(100);
+        TextView text = new TextView(this);
+        text.setText("0% · 0.0 / " + String.format(Locale.US, "%.1f MB", totalBytes / 1048576.0));
+        layout.addView(bar);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = (int) (12 * density);
+        layout.addView(text, lp);
+        progressBar = bar;
+        progressText = text;
+        progressDialog = new AlertDialog.Builder(this)
+                .setTitle("Downloading update…")
+                .setView(layout)
+                .setCancelable(false)
+                .create();
+        progressDialog.show();
+    }
+
+    private void updateProgress(int pct, long downloaded, long totalBytes) {
+        if (progressBar != null) progressBar.setProgress(pct);
+        if (progressText != null) {
+            progressText.setText(String.format(Locale.US, "%d%% · %.1f / %.1f MB",
+                    pct, downloaded / 1048576.0, totalBytes / 1048576.0));
+        }
+    }
+
+    private void dismissProgress() {
+        if (progressDialog != null && progressDialog.isShowing()) {
+            try {
+                progressDialog.dismiss();
+            } catch (Exception ignored) {}
+        }
+        progressDialog = null;
+        progressBar = null;
+        progressText = null;
+    }
+
+    private void openInstaller(File apk) {
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            intent.setDataAndType(ApkProvider.uriFor(this, apk), "application/vnd.android.package-archive");
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(intent);
+        } catch (Exception e) {
+            Toast.makeText(MainActivity.this, "Cannot open installer", Toast.LENGTH_LONG).show();
+        }
     }
 
     @Override
@@ -558,6 +684,18 @@ public class MainActivity extends Activity {
         if (requestCode == REQ_OVERLAY_PERMISSION) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)) {
                 FloatingBubbleService.start(this);
+            }
+        }
+        if (requestCode == REQ_UNKNOWN_APP_SOURCES) {
+            if (getPackageManager().canRequestPackageInstalls()) {
+                if (pendingApkUrl != null) {
+                    startDownload(pendingApkUrl, pendingApkSize);
+                    pendingApkUrl = null;
+                }
+            } else {
+                Toast.makeText(this,
+                        "Please allow 'Install unknown apps' for SheetSubmit, then try again",
+                        Toast.LENGTH_LONG).show();
             }
         }
         if (requestCode == REQ_FILE_CHOOSER) {
