@@ -149,6 +149,7 @@ export interface SheetState {
   crossDupRows: Set<number>;
   hasDuplicates: boolean;
   crossDups: Record<string, unknown[]>;
+  checkRunning: boolean;
 
   openFile: (id: string) => Promise<void>;
   closeFile: () => void;
@@ -187,6 +188,8 @@ export interface SheetState {
   onDotDoubleTap: (rowIdx: number) => Promise<void>;
   onDotHold: (rowIdx: number) => { logs: unknown[]; label: string } | null;
   toggleVisibleCol: (colKey: string) => void;
+  runCheck: () => Promise<void>;
+  maybeAutoCheck: (rowIdx: number, colKey: string) => void;
 }
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -216,6 +219,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
   crossDupRows: new Set(),
   hasDuplicates: false,
   crossDups: {},
+  checkRunning: false,
 
   openFile: async (id) => {
     const seq = ++openSeq;
@@ -266,6 +270,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
         selCols: new Set(),
         invalidCells: new Set(),
         crossDups,
+        checkRunning: false,
         ...recomputeMarks(rows, crossDups, columns),
       });
     } catch {
@@ -301,6 +306,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
       crossDupRows: new Set(),
       hasDuplicates: false,
       crossDups: {},
+      checkRunning: false,
     });
   },
 
@@ -353,6 +359,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
       invalidCells: newInvalid,
       ...recomputeMarks(newRows, s.crossDups, s.columns),
     });
+    get().maybeAutoCheck(rowIdx, colKey);
     get().persist();
   },
 
@@ -873,6 +880,79 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     if (s.fileId) {
       localStorage.setItem(`ss_cols_${s.fileId}`, JSON.stringify([...visibleCols]));
     }
+  },
+
+  runCheck: async () => {
+    const s = get();
+    if (s.checkRunning) return;
+    if (s.hasDuplicates) {
+      toast("Resolve duplicate values first");
+      return;
+    }
+    if (s.invalidCells.size > 0) {
+      toast("Fix invalid cell values first");
+      return;
+    }
+    const behavior = getFileBehavior(s.file?.type ?? "fb_cookie");
+    if (!behavior?.checkAccounts) return;
+    const preCheckRows = s.rows.map((r) => ({ ...r }));
+    const rows = s.rows.map((r) => ({ ...r }));
+    rows.forEach((row) => {
+      const isEmpty = s.columns.every((c) => !row[c.key]);
+      if (isEmpty) row.status = "";
+    });
+    set({ checkRunning: true });
+    try {
+      const result = await behavior.checkAccounts(rows);
+      const apiLogs = s.apiLogs.slice();
+      rows.forEach((row) => {
+        let uid = row.uid ?? null;
+        if (!uid && row.cookies) {
+          const m = row.cookies.match(/c_user=(\d+)/);
+          if (m) uid = m[1];
+        }
+        if (uid) {
+          const response =
+            row.status === "good" ? "valid" : row.status === "bad" ? "dead" : "uncertain";
+          apiLogs.push({
+            username: uid,
+            status: "done",
+            calls: [{ type: "check", request: "UID " + uid, response }],
+          });
+        }
+      });
+      const undoStack: UndoEntry[] = [
+        ...s.undoStack,
+        { type: "rows" as const, prevRows: preCheckRows },
+      ];
+      if (undoStack.length > 100) undoStack.shift();
+      set({
+        rows,
+        undoStack,
+        redoStack: [],
+        apiLogs,
+        isDirty: true,
+        checkRunning: false,
+        ...recomputeMarks(rows, s.crossDups, s.columns),
+      });
+      get().persist("check");
+      toast(
+        `Check done — ${result.valid} valid, ${result.dead} dead, ${result.uncertain} uncertain`,
+      );
+    } catch (e) {
+      set({ checkRunning: false });
+      toast("Check failed: " + (e instanceof Error ? e.message : String(e)));
+    }
+  },
+
+  maybeAutoCheck: (_rowIdx, colKey) => {
+    const s = get();
+    if (s.checkRunning) return;
+    if (localStorage.getItem("ss_autoCheck") !== "true") return;
+    const behavior = getFileBehavior(s.file?.type ?? "fb_cookie");
+    if (!behavior?.checkAccounts) return;
+    if (colKey !== "cookies") return;
+    void get().runCheck();
   },
 }));
 

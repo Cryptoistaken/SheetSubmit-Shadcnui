@@ -19,6 +19,9 @@ export interface FileBehavior {
     row: Row,
     logs: unknown[],
   ): { action: string; logs: unknown[]; label: string } | null;
+  checkAccounts?(
+    rows: Row[],
+  ): Promise<{ total: number; valid: number; dead: number; uncertain: number }>;
 }
 
 const behaviors: Record<string, FileBehavior> = {

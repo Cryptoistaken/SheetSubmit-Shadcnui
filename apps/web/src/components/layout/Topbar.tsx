@@ -23,6 +23,16 @@ export default function Topbar() {
   const [panelOpen, setPanelOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameName, setRenameName] = useState("");
+
+  const isFilePage = location.pathname.startsWith("/file/");
+  const hideHome = isFilePage ? { display: "none" as const } : undefined;
+
+  // Close gear panel when leaving the home screen.
+  useEffect(() => {
+    if (isFilePage) setPanelOpen(false);
+  }, [isFilePage]);
 
   // Health polling — port of app.js checkConn (15s interval, 1.5x backoff to 2min).
   useEffect(() => {
@@ -78,13 +88,28 @@ export default function Topbar() {
 
   if (!user) return null;
 
-  const isFilePage = location.pathname.startsWith("/file/");
   const displayName = ((user.firstName ?? "") + " " + (user.lastName ?? "")).trim();
   const fileName = file
     ? file.name.length > 10
-      ? file.name.substring(0, 10) + "…"
+      ? file.name.substring(0, 10) + "..."
       : file.name
     : "";
+
+  const openRename = () => {
+    if (!file) return;
+    setRenameName(file.name);
+    setRenameOpen(true);
+  };
+
+  const closeRename = () => setRenameOpen(false);
+
+  const commitRename = async () => {
+    const name = renameName.trim();
+    if (!name || !file) return;
+    await api.updateFile(file.id, { name });
+    useSheetStore.setState((s) => (s.file ? { file: { ...s.file, name } } : {}));
+    closeRename();
+  };
 
   const logout = () => {
     api.logout().then(() => window.location.reload());
@@ -97,8 +122,11 @@ export default function Topbar() {
           src={theme === "dark" ? "/logo-dark.svg" : "/logo-light.svg"}
           className="topbar-logo"
           alt="Logo"
+          style={hideHome}
         />
-        <span className="home-top-title">Sheet Submit</span>
+        <span className="home-top-title" style={hideHome}>
+          Sheet Submit
+        </span>
         <button
           className={`back-btn${isFilePage ? " visible" : ""}`}
           onClick={() => navigate("/")}
@@ -108,13 +136,17 @@ export default function Topbar() {
         <button
           className={"sheet-title-btn" + (isFilePage ? " visible" : "")}
           title={file ? file.name : "Rename file"}
+          onClick={openRename}
         >
           {fileName}
         </button>
       </div>
       <div className="topbar-r">
         {isFilePage && <SheetToolbar />}
-        <span className={`conn-status${conn.cls ? " " + conn.cls : ""}`}>
+        <span
+          className={`conn-status${conn.cls ? " " + conn.cls : ""}`}
+          style={hideHome}
+        >
           <span className="conn-status-dot"></span>
           <span>{conn.text}</span>
         </span>
@@ -122,6 +154,7 @@ export default function Topbar() {
           ref={btnRef}
           className={`profile-btn${user.photoUrl ? " loaded" : ""}`}
           title="User menu"
+          style={hideHome}
           onClick={(e) => {
             e.stopPropagation();
             setPanelOpen((o) => !o);
@@ -161,6 +194,43 @@ export default function Topbar() {
           </button>
         </div>
       </div>
+
+      {isFilePage && renameOpen && file && (
+        <div
+          className="modal-overlay open"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeRename();
+          }}
+        >
+          <div className="modal-box">
+            <div className="modal-title">Rename file</div>
+            <input
+              className="modal-input"
+              type="text"
+              value={renameName}
+              autoFocus
+              onFocus={(e) => e.currentTarget.select()}
+              onChange={(e) => setRenameName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void commitRename();
+                } else if (e.key === "Escape") {
+                  closeRename();
+                }
+              }}
+            />
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={closeRename}>
+                Cancel
+              </button>
+              <button className="btn btn-primary" onClick={() => void commitRename()}>
+                Rename
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

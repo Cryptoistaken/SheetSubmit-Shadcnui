@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { useAuth } from "@/contexts/AuthContext";
 import { useUndoRedo } from "@/hooks/useUndoRedo";
 import { useToast } from "@/lib/toast";
 import { useSheetStore } from "@/stores/sheetStore";
@@ -9,16 +10,52 @@ interface MenuPos {
   right: number;
 }
 
+function UndoIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+function RedoIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M18.4 10.6C16.55 8.99 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 15.7c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 15.5h9v-9l-3.6 3.1z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 export default function SheetToolbar() {
   const { canUndo, canRedo, undo, redo } = useUndoRedo();
+  const { user } = useAuth();
   const showToast = useToast();
   const columns = useSheetStore((s) => s.columns);
   const visibleCols = useSheetStore((s) => s.visibleCols);
+  const hasDuplicates = useSheetStore((s) => s.hasDuplicates);
+  const checkRunning = useSheetStore((s) => s.checkRunning);
 
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<MenuPos>({ top: 0, right: 0 });
   const btnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  const [checkOpen, setCheckOpen] = useState(false);
+  const [checkPos, setCheckPos] = useState<MenuPos>({ top: 0, right: 0 });
+  const checkArrowRef = useRef<HTMLButtonElement>(null);
+  const checkMenuRef = useRef<HTMLDivElement>(null);
+  const [autoCheckOn, setAutoCheckOn] = useState(
+    () => localStorage.getItem("ss_autoCheck") === "true",
+  );
+  const [waCheckOn, setWaCheckOn] = useState(
+    () => localStorage.getItem("ss_waCheck") === "true",
+  );
 
   const close = () => setOpen(false);
 
@@ -41,6 +78,32 @@ export default function SheetToolbar() {
     document.addEventListener("click", onDoc);
     return () => document.removeEventListener("click", onDoc);
   }, [open]);
+
+  const toggleCheck = () => {
+    const next = !checkOpen;
+    if (next && checkArrowRef.current) {
+      const rect = checkArrowRef.current.getBoundingClientRect();
+      setCheckPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+    }
+    setCheckOpen(next);
+  };
+
+  useEffect(() => {
+    if (!checkOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (
+        checkArrowRef.current?.contains(t) ||
+        checkMenuRef.current?.contains(t) ||
+        btnRef.current?.contains(t)
+      ) {
+        return;
+      }
+      setCheckOpen(false);
+    };
+    document.addEventListener("click", onDoc);
+    return () => document.removeEventListener("click", onDoc);
+  }, [checkOpen]);
 
   const copyAll = () => {
     close();
@@ -69,6 +132,11 @@ export default function SheetToolbar() {
       .catch(() => showToast("Cannot copy"));
   };
 
+  const phase4 = (what: string) => {
+    close();
+    showToast(what + " — Phase 4");
+  };
+
   return (
     <>
       <button
@@ -77,7 +145,7 @@ export default function SheetToolbar() {
         disabled={!canUndo}
         onClick={undo}
       >
-        ↺
+        <UndoIcon />
       </button>
       <button
         className="undo-redo-btn"
@@ -85,8 +153,67 @@ export default function SheetToolbar() {
         disabled={!canRedo}
         onClick={redo}
       >
-        ↻
+        <RedoIcon />
       </button>
+      <div className="check-split-wrap" data-check={checkRunning ? "checking" : ""}>
+        <button
+          className={
+            "check-split-main" + (hasDuplicates ? " warning" : "")
+          }
+          onClick={() => void useSheetStore.getState().runCheck()}
+        >
+          {checkRunning ? "Checking..." : "Check"}
+        </button>
+        <button
+          ref={checkArrowRef}
+          className={"check-split-arrow" + (checkOpen ? " open" : "")}
+          title="More check options"
+          onClick={toggleCheck}
+        >
+          <svg width="9" height="9" viewBox="0 0 10 6" fill="currentColor">
+            <path d="M0 0l5 6 5-6z" />
+          </svg>
+        </button>
+      </div>
+      <div
+        ref={checkMenuRef}
+        className={"check-dropdown" + (checkOpen ? " open" : "")}
+        style={{ top: checkPos.top, right: checkPos.right }}
+      >
+        <div className="check-dropdown-label">Auto-check</div>
+        <button
+          className={"autocheck-toggle" + (autoCheckOn ? " on" : "")}
+          onClick={() => {
+            const next = !autoCheckOn;
+            setAutoCheckOn(next);
+            localStorage.setItem("ss_autoCheck", String(next));
+          }}
+        >
+          <span className="autocheck-track"></span>
+          Auto-check
+        </button>
+        {user?.isAdmin && (
+          <>
+            <div
+              className="check-dropdown-label"
+              style={{ marginTop: 8 }}
+            >
+              Page Check
+            </div>
+            <button
+              className={"autocheck-toggle" + (waCheckOn ? " on" : "")}
+              onClick={() => {
+                const next = !waCheckOn;
+                setWaCheckOn(next);
+                localStorage.setItem("ss_waCheck", String(next));
+              }}
+            >
+              <span className="autocheck-track"></span>
+              Page Check
+            </button>
+          </>
+        )}
+      </div>
       <button
         ref={btnRef}
         className="sheet-more-btn"
@@ -101,7 +228,86 @@ export default function SheetToolbar() {
         style={{ top: pos.top, right: pos.right }}
       >
         <button className="sheet-more-item" onClick={copyAll}>
-          Copy all
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+          </svg>
+          Copy all data
+        </button>
+        <button
+          className="sheet-more-item"
+          onClick={() => phase4("Download xlsx")}
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          Download xlsx
+        </button>
+        <button
+          className="sheet-more-item"
+          onClick={() => phase4("Upload xlsx")}
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
+          Upload xlsx
+        </button>
+        <button className="sheet-more-item" onClick={() => phase4("Merge")}>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <circle cx="18" cy="18" r="3" />
+            <circle cx="6" cy="6" r="3" />
+            <path d="M6 21V9a9 9 0 0 0 9 9" />
+          </svg>
+          Merge
+        </button>
+        <button
+          className="sheet-more-item"
+          onClick={() => phase4("Versions")}
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>
+          Versions
         </button>
         <div className="sheet-more-sep"></div>
         {columns.map((col) => (

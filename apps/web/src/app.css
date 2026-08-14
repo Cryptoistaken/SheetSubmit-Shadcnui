@@ -43,9 +43,9 @@
     --r: 6px;
     --rl: 8px;
 
-    /* Fonts */
-    --sans: 'Geist Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    --mono: 'Geist Mono', 'SF Mono', 'Fira Code', monospace;
+    /* Fonts — loaded via @fontsource-variable/geist + geist-mono (index.css) */
+    --sans: 'Geist Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --mono: 'Geist Mono Variable', 'SF Mono', 'Fira Code', monospace;
 
     /* Shadows — Vercel minimal */
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
@@ -1795,3 +1795,124 @@ th.rh:hover {
 @keyframes spin {
     to { transform: rotate(360deg); }
 }
+
+/* ── Sheet view container (port of old #sheetView) ── */
+.sheet-view {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+}
+
+/* ── Check split button (port of old index.html inline + components.css) ── */
+.check-split-wrap {
+    display: inline-flex;
+    align-items: stretch;
+    border-radius: var(--r);
+    overflow: hidden;
+    border: 1px solid var(--blue);
+    transition: opacity 0.15s var(--ease-out);
+}
+.check-split-wrap[data-check="disabled"] { opacity: 0.38; border-color: var(--border2); pointer-events: none; }
+.check-split-wrap[data-check="checking"] { opacity: 0.55; pointer-events: none; }
+.check-split-main {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 10px;
+    border: none;
+    background: var(--blue);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    line-height: 1;
+    font-family: var(--sans);
+    transition: background 0.1s;
+}
+.check-split-main:hover { background: var(--blue-dark, #2563eb); }
+.check-split-main:active { transform: scale(0.97); }
+.check-split-main.warning { border-color: #ffa000 !important; color: #ffa000 !important; }
+.dark .check-split-main.warning { border-color: #ffa000 !important; color: #ffa000 !important; }
+.check-split-arrow {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 7px;
+    background: var(--blue);
+    color: #fff;
+    border: none;
+    border-left: 1px solid rgba(255, 255, 255, 0.25);
+    cursor: pointer;
+    transition: background 0.1s, transform 0.12s var(--ease-out);
+}
+.check-split-arrow:hover { background: var(--blue-dark, #2563eb); }
+.check-split-arrow:active { transform: scale(0.93); }
+.check-split-arrow svg { transition: transform 0.15s var(--ease-out); }
+.check-split-arrow.open svg { transform: rotate(180deg); }
+.check-dropdown {
+    position: fixed;
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: var(--r);
+    box-shadow: var(--shadow-md);
+    z-index: 650;
+    padding: 8px 12px;
+    display: none;
+    min-width: 150px;
+}
+.check-dropdown.open { display: block; animation: smIn 0.15s var(--ease-out); }
+.check-dropdown-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 8px;
+}
+.autocheck-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text2);
+    font-family: var(--sans);
+    transition: color 0.1s;
+    width: 100%;
+}
+.autocheck-toggle:hover { color: var(--text); }
+.autocheck-toggle .autocheck-track {
+    position: relative;
+    width: 36px;
+    height: 20px;
+    flex-shrink: 0;
+    background: var(--bg4);
+    border-radius: 10px;
+    border: 1.5px solid var(--border2);
+    transition: background 0.2s var(--ease-out), border-color 0.2s var(--ease-out);
+}
+.autocheck-toggle .autocheck-track::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--bg);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+    transition: transform 0.2s var(--ease-out);
+}
+.autocheck-toggle.on .autocheck-track { background: var(--blue); border-color: var(--blue); }
+.autocheck-toggle.on .autocheck-track::after { transform: translateX(16px); }
+
+/* ── Touch devices (port of old css/touch.css) ── */
+body.is-touch table.grid td.dc { overflow: visible; }
