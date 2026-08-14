@@ -4,8 +4,10 @@
   "private": true,
   "description": "SheetSubmit — React + shadcn/ui frontend with TypeScript backend",
   "workspaces": [
-    "apps/*",
-    "packages/*"
+    "apps/web",
+    "apps/server",
+    "packages/*",
+    "!apps/android"
   ],
   "scripts": {
     "dev:web": "bun run --cwd apps/web dev",

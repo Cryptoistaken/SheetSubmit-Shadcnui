@@ -50,13 +50,15 @@ SheetSubmit-Shadcnui/
 │           ├── pages/                # HomePage, SheetPage, AdminPage (stubs)
 │           └── features/filetypes/   # totp.ts, validation.ts (stubs)
 ├── apps/
-│   └── server/           # TS Express backend (Phase 1 — NOT started)
-│       ├── package.json  # deps listed but NOT installed yet
+│   ├── server/           # TS Express backend (Phase 1 — NOT started)
+│   │   ├── package.json  # deps listed but NOT installed yet
 │       ├── tsconfig.json
 │       └── src/          # index.ts, app.ts, config/env.ts,
 │                         # middleware/{auth,error,logging}.ts,
 │                         # routes/{auth,files,cells,history,admin,wa,bot}.ts,
 │                         # services/{redis,files,backup,telegram}.ts, lib/{ids,json}.ts — all empty stubs
+│   └── android/           # copied from old repo B:\Studio\Tools\SheetSubmit\android
+│                         # (WebView wrapper + Android bridge + bubble service); NOT a bun workspace
 └── packages/
     └── shared/           # @sheetsubmit/shared — domain types (File, Row, FileType) — populated
 ```
@@ -80,6 +82,19 @@ SheetSubmit-Shadcnui/
   (~1,900 lines) into modules with **identical API contract, status codes, and Redis keys**.
   No data migration.
 - **Type sharing:** `@sheetsubmit/shared` workspace package consumed by web + server.
+
+### Android app in this repo
+- `apps/android` was **copied** from the old repo (`B:\Studio\Tools\SheetSubmit\android`,
+  build artifacts `.gradle`/`app/build` excluded). It is **NOT a bun workspace** — the root
+  `workspaces` glob was changed to `["apps/web", "apps/server", "packages/*", "!apps/android"]`
+  so `bun install` ignores it (no package.json). Verified: `bun install --frozen-lockfile` still passes.
+- `.github/workflows/build-android.yml` paths/working-dir/keystore/artifact updated from
+  `android/**` to `apps/android/**`.
+- `apps/android` is added to `.dockerignore` (server image doesn't ship Android source).
+- **Single URL source of truth:** `apps/android/.../app/Config.java` holds `BASE_URL`
+  (now `https://sheetsubmit-shadcnui-production.up.railway.app`); `HOME_URL` and `APP_HOST`
+  are derived from it. `MainActivity` and `FloatingBubbleService` reference `Config.*` — change
+  only `Config.BASE_URL` to retarget the app.
 
 ---
 

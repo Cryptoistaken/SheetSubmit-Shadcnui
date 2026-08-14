@@ -5,7 +5,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'android/**'
+      - 'apps/android/**'
       - '.github/workflows/build-android.yml'
 
 permissions:
@@ -36,7 +36,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
           if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
-            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/android-release.keystore
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > apps/android/android-release.keystore
             echo "KEYSTORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
             echo "Release keystore decoded"
           else
@@ -44,7 +44,7 @@ jobs:
           fi
 
       - name: Build release APK
-        working-directory: android
+        working-directory: apps/android
         run: ./gradlew assembleRelease --no-daemon
         env:
           VERSION_CODE: ${{ github.run_number }}
@@ -53,7 +53,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: sheetsubmit-apk
-          path: android/app/build/outputs/apk/release/app-release.apk
+          path: apps/android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
 
       - name: Generate changelog
@@ -81,4 +81,4 @@ jobs:
           tag_name: v${{ github.run_number }}
           name: v${{ github.run_number }}
           body_path: changelog.md
-          files: android/app/build/outputs/apk/release/app-release.apk
+          files: apps/android/app/build/outputs/apk/release/app-release.apk

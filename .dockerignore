@@ -1,5 +1,7 @@
 node_modules
+**/node_modules
 apps/web/dist
+apps/android
 .git
 .env
 .env.*
