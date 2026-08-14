@@ -1,0 +1,43 @@
+import { api } from "@/lib/api";
+import { dedupKeyForRow } from "@/stores/sheetStore";
+import type { Row } from "@/lib/types";
+
+export interface VersionRows {
+  rows: Row[];
+  keys: Set<string>;
+  ok: boolean;
+}
+
+const cache = new Map<string, Map<number, VersionRows>>();
+
+export function getCachedVersionRows(fileId: string, v: number): VersionRows | null {
+  return cache.get(fileId)?.get(v) ?? null;
+}
+
+/** Per-file cached version row load. Never rejects; errors degrade to empty. */
+export async function getVersionRows(fileId: string, v: number): Promise<VersionRows> {
+  let byFile = cache.get(fileId);
+  if (!byFile) {
+    byFile = new Map();
+    cache.set(fileId, byFile);
+  }
+  const hit = byFile.get(v);
+  if (hit) return hit;
+  try {
+    const data = await api.getVersion(fileId, v);
+    const rows = (data?.rows ?? []) as Row[];
+    const keys = new Set<string>();
+    rows.forEach((r) => {
+      const k = dedupKeyForRow(r);
+      if (k) keys.add(String(k));
+    });
+    const rec: VersionRows = { rows, keys, ok: !!data?.rows };
+    byFile.set(v, rec);
+    return rec;
+  } catch (e) {
+    console.error("[Versions] load v" + v + " error:", e);
+    const rec: VersionRows = { rows: [], keys: new Set(), ok: false };
+    byFile.set(v, rec);
+    return rec;
+  }
+}

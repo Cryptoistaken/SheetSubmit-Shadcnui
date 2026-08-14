@@ -11,7 +11,7 @@ import { useConfirm } from "@/lib/confirm";
 import { useToast } from "@/lib/toast";
 import { FILE_TYPE_DEFS } from "@/lib/types";
 import type { FileType, SheetFile } from "@/lib/types";
-import { downloadXlsx, genId, importXlsx, todayStr } from "@/lib/xlsx";
+import { downloadXlsx, genId, hydrateWaCache, importXlsx, todayStr } from "@/lib/xlsx";
 
 type Tab = "files" | "archive" | "admin";
 
@@ -141,6 +141,7 @@ export default function HomePage() {
     const buf = await file.arrayBuffer();
     const current = files ?? (await api.getFiles());
     const result = await importXlsx(buf, file.name, current);
+    await hydrateWaCache(result.rows);
     await api.createFile({ id: result.id, name: result.name, type: result.type });
     await api.persist(result.id, {
       rows: result.rows,

@@ -3,8 +3,10 @@ import { api } from "@/lib/api";
 import {
   FILE_TYPE_DEFS,
   type ColumnDef,
+  type CrossDupEntry,
   type Row,
   type SheetFile,
+  type WaCacheEntry,
 } from "@/lib/types";
 import { getFileBehavior } from "@/features/filetypes";
 import { toast } from "@/lib/toast";
@@ -38,6 +40,17 @@ export function makeEmptyRow(columns: ColumnDef[]): Row {
   });
   nr.status = "";
   return nr;
+}
+
+/** fb_cookie dedup key: uid, else c_user extracted from cookies (old
+ * dedupKeyForRow). Used by merge + version diff/summaries. */
+export function dedupKeyForRow(row: Row): string | null {
+  if (row.uid) return row.uid;
+  if (row.cookies) {
+    const m = row.cookies.match(/c_user=(\d+)/);
+    if (m) return m[1];
+  }
+  return null;
 }
 
 interface MarkResult {
@@ -186,10 +199,19 @@ export interface SheetState {
   tripleTapRow: (rowIdx: number) => Promise<void>;
   tripleTapCol: (colKey: string) => Promise<void>;
   onDotDoubleTap: (rowIdx: number) => Promise<void>;
-  onDotHold: (rowIdx: number) => { logs: unknown[]; label: string } | null;
+  onDotHold: (rowIdx: number) => {
+    logs: unknown[];
+    label: string;
+    crossInfo: CrossDupEntry[];
+    wa: { status: string; banReason?: string | null } | null;
+  } | null;
   toggleVisibleCol: (colKey: string) => void;
   runCheck: () => Promise<void>;
+  runWaChecks: () => Promise<void>;
   maybeAutoCheck: (rowIdx: number, colKey: string) => void;
+  restoreVersion: (v: number) => Promise<boolean>;
+  mergeRows: (incoming: Row[]) => void;
+  applyUpload: (mode: "replace" | "append", incoming: Row[]) => void;
 }
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -867,9 +889,22 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     const behavior = getFileBehavior(s.file?.type ?? "fb_cookie");
     if (!behavior?.onDotHold) return null;
     const result = behavior.onDotHold(row, s.apiLogs);
-    return result?.action === "show_logs"
-      ? { logs: result.logs, label: result.label }
+    if (result?.action !== "show_logs") return null;
+    let uid = row.uid ?? null;
+    if (!uid && row.cookies) {
+      const m = row.cookies.match(/c_user=(\d+)/);
+      if (m) uid = m[1];
+    }
+    const crossInfo =
+      uid && s.crossDups[uid]
+        ? (s.crossDups[uid] as CrossDupEntry[]).filter(
+            (e) => e.fileId !== s.fileId,
+          )
+        : [];
+    const wa = row.wa_status
+      ? { status: row.wa_status, banReason: row.wa_ban_reason ?? undefined }
       : null;
+    return { logs: result.logs, label: result.label, crossInfo, wa };
   },
 
   toggleVisibleCol: (colKey) => {
@@ -940,6 +975,12 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
       toast(
         `Check done — ${result.valid} valid, ${result.dead} dead, ${result.uncertain} uncertain`,
       );
+      if (
+        s.file?.type === "fb_cookie" &&
+        localStorage.getItem("ss_waCheck") === "true"
+      ) {
+        void get().runWaChecks();
+      }
     } catch (e) {
       set({ checkRunning: false });
       toast("Check failed: " + (e instanceof Error ? e.message : String(e)));
@@ -955,7 +996,229 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     if (colKey !== "cookies") return;
     void get().runCheck();
   },
+
+  runWaChecks: async () => {
+    const s = get();
+    if (s.file?.type !== "fb_cookie") return;
+    const rows = s.rows.map((r) => ({ ...r }));
+    const waRows: { row: Row; uid: string | null }[] = [];
+    rows.forEach((row) => {
+      const match =
+        row.status === "good" &&
+        row.wa_status !== "eligible" &&
+        !!row.cookies &&
+        /c_user=\d+/.test(row.cookies);
+      if (match) {
+        let uid = row.uid ?? null;
+        if (!uid && row.cookies) {
+          const m = row.cookies.match(/c_user=(\d+)/);
+          if (m) uid = m[1];
+        }
+        waRows.push({ row, uid });
+      }
+    });
+    if (!waRows.length) return;
+    let cache: Record<string, WaCacheEntry> = {};
+    try {
+      const uids = waRows
+        .map((w) => w.uid)
+        .filter((u): u is string => !!u);
+      if (uids.length) {
+        const res = await api.getWaCache(uids);
+        cache = (res?.cache as Record<string, WaCacheEntry>) ?? {};
+      }
+    } catch {
+      cache = {};
+    }
+    if (get().fileId !== s.fileId) return;
+    let cachedApply = false;
+    const live = waRows.filter((w) => {
+      const hit = w.uid ? cache[w.uid] : null;
+      if (!hit || !hit.status) return true;
+      if (hit.status === "eligible" || hit.status === "ineligible") {
+        w.row.wa_status = hit.status;
+        w.row.wa_ban_reason = hit.banReason ?? null;
+        cachedApply = true;
+        return false;
+      }
+      return true;
+    });
+    if (!live.length) {
+      if (cachedApply) {
+        const cur = get();
+        set({
+          rows,
+          isDirty: true,
+          ...recomputeMarks(rows, cur.crossDups, cur.columns),
+        });
+        get().persist();
+      }
+      return;
+    }
+    const concurrency = 3;
+    let pos = 0;
+    const nextBatch = async (): Promise<void> => {
+      if (pos >= live.length) return;
+      const batch: number[] = [];
+      for (let limit = concurrency; limit > 0 && pos < live.length; limit--) {
+        batch.push(pos++);
+      }
+      await Promise.all(
+        batch.map(async (i) => {
+          const w = live[i];
+          try {
+            const wa = (await api.waCheck(w.row.cookies ?? "")) as {
+              eligible?: boolean;
+              error?: string | null;
+              banReason?: string | null;
+            } | null;
+            if (wa && wa.eligible === true) {
+              w.row.wa_status = "eligible";
+            } else {
+              w.row.wa_status = wa?.error ? "error" : "ineligible";
+              w.row.wa_ban_reason = wa ? wa.banReason ?? null : null;
+            }
+          } catch {
+            w.row.wa_status = "error";
+          }
+        }),
+      );
+      return nextBatch();
+    };
+    try {
+      await nextBatch();
+    } catch {
+      // swallow
+    }
+    if (get().fileId !== s.fileId) return;
+    const cur = get();
+    set({
+      rows,
+      isDirty: true,
+      ...recomputeMarks(rows, cur.crossDups, cur.columns),
+    });
+    get().persist();
+  },
+
+  restoreVersion: async (v) => {
+    const s = get();
+    if (!s.fileId) return false;
+    try {
+      const res = await api.restoreVersion(s.fileId, v);
+      if (!res?.ok) {
+        toast("Restore failed");
+        return false;
+      }
+      const rows = [...(res.rows ?? [])];
+      while (rows.length < 100) rows.push(makeEmptyRow(s.columns));
+      const undoStack: UndoEntry[] = [
+        ...s.undoStack,
+        { type: "rows", prevRows: s.rows.map((r) => ({ ...r })) },
+      ];
+      if (undoStack.length > 100) undoStack.shift();
+      set({
+        rows,
+        undoStack,
+        redoStack: [],
+        isDirty: true,
+        selectedCell: null,
+        qebOpen: false,
+        ...recomputeMarks(rows, s.crossDups, s.columns),
+      });
+      toast(`Restored version v${v} (${res.rows?.length ?? 0} rows)`);
+      return true;
+    } catch {
+      toast("Restore failed");
+      return false;
+    }
+  },
+
+  mergeRows: (incoming) => {
+    const s = get();
+    const existing = new Set<string>();
+    s.rows.forEach((row) => {
+      const k = dedupKeyForRow(row);
+      if (k) existing.add(k);
+    });
+    const added: Row[] = [];
+    let skipped = 0;
+    incoming.forEach((row) => {
+      const k = dedupKeyForRow(row);
+      if (k && existing.has(k)) {
+        skipped++;
+        return;
+      }
+      if (k) existing.add(k);
+      added.push(row);
+    });
+    if (!added.length) {
+      toast(`Merged 0 (skipped ${skipped})`);
+      return;
+    }
+    const undoStack: UndoEntry[] = [
+      ...s.undoStack,
+      { type: "rows", prevRows: s.rows.map((r) => ({ ...r })) },
+    ];
+    if (undoStack.length > 100) undoStack.shift();
+    const rows = s.rows.concat(added);
+    set({
+      rows,
+      undoStack,
+      redoStack: [],
+      isDirty: true,
+      ...recomputeMarks(rows, s.crossDups, s.columns),
+    });
+    get().persist("merge");
+    void refreshCrossDups(s.fileId);
+    toast(`Merged ${added.length} (skipped ${skipped})`);
+  },
+
+  applyUpload: (mode, incoming) => {
+    const s = get();
+    if (mode === "replace") {
+      const rows = [...incoming];
+      while (rows.length < 100) rows.push(makeEmptyRow(s.columns));
+      set({
+        rows,
+        undoStack: [],
+        redoStack: [],
+        isDirty: true,
+        selectedCell: null,
+        qebOpen: false,
+        ...recomputeMarks(rows, s.crossDups, s.columns),
+      });
+      get().persist("replace");
+      toast(`Replaced with ${incoming.length} rows`);
+    } else {
+      const rows = s.rows.concat(incoming);
+      set({
+        rows,
+        undoStack: [],
+        redoStack: [],
+        isDirty: true,
+        ...recomputeMarks(rows, s.crossDups, s.columns),
+      });
+      get().persist("append");
+      toast(`Appended ${incoming.length} rows`);
+    }
+    void refreshCrossDups(s.fileId);
+  },
 }));
+
+async function refreshCrossDups(fileId: string | null) {
+  if (!fileId) return;
+  try {
+    const d = await api.getCrossDups(fileId);
+    const cur = useSheetStore.getState();
+    if (!d?.dups || cur.fileId !== fileId) return;
+    useSheetStore.setState({
+      crossDups: d.dups,
+      ...recomputeMarks(cur.rows, d.dups, cur.columns),
+    });
+  } catch {
+    // swallow
+  }
+}
 
 function applyCells(
   cells: Array<{ rowIdx: number; colKey: string; value: string }>,

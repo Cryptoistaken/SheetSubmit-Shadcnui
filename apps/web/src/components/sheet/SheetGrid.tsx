@@ -5,7 +5,7 @@ import type {
 } from "react";
 import { useSheetStore } from "@/stores/sheetStore";
 import { vibrate } from "@/lib/utils";
-import type { ColumnDef } from "@/lib/types";
+import type { ColumnDef, CrossDupEntry } from "@/lib/types";
 
 interface ApiCall {
   type?: string;
@@ -21,6 +21,8 @@ interface ApiLog {
 interface LogPopupState {
   logs: unknown[];
   label: string;
+  crossInfo: CrossDupEntry[];
+  wa: { status: string; banReason?: string | null } | null;
   x: number;
   y: number;
 }
@@ -190,6 +192,8 @@ export default function SheetGrid() {
           setLogPopup({
             logs: result.logs,
             label: result.label,
+            crossInfo: result.crossInfo,
+            wa: result.wa,
             x: Math.max(4, rect.right - 340),
             y: rect.bottom + 4,
           });
@@ -280,6 +284,62 @@ export default function SheetGrid() {
             {logPopup.label} — {logPopup.logs.length} API call
             {logPopup.logs.length > 1 ? "s" : ""}
           </div>
+          {logPopup.crossInfo.length > 0 ? (
+            <div
+              style={{
+                padding: "6px 0",
+                borderBottom: "1px solid var(--border2)",
+                marginBottom: 4,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: "var(--yellow)",
+                  marginBottom: 4,
+                }}
+              >
+                ⚠ Cross-file duplicate
+              </div>
+              {logPopup.crossInfo.map((e, i) => (
+                <div
+                  key={i}
+                  style={{
+                    fontSize: 11,
+                    color: "var(--text2)",
+                    padding: "2px 0",
+                  }}
+                >
+                  {e.fileName} (row {e.rowIdx + 1})
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {logPopup.wa ? (
+            logPopup.wa.status === "eligible" ? (
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: "var(--green)",
+                  padding: "4px 0",
+                }}
+              >
+                ✓ FB Page
+              </div>
+            ) : logPopup.wa.banReason ? (
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "var(--text3)",
+                  padding: "4px 0",
+                }}
+              >
+                ⚠ {logPopup.wa.banReason}
+              </div>
+            ) : null
+          ) : null}
           {logPopup.logs.length === 0 ? (
             <div style={{ padding: "6px 0", color: "var(--text3)", fontSize: 12 }}>
               No logs for this row

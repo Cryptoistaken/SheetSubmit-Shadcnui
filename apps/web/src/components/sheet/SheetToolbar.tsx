@@ -1,8 +1,14 @@
 import { useEffect, useRef, useState } from "react";
+import type { ChangeEvent } from "react";
 
 import { useUndoRedo } from "@/hooks/useUndoRedo";
 import { useToast } from "@/lib/toast";
+import { parseSheetRows } from "@/lib/xlsx";
 import { useSheetStore } from "@/stores/sheetStore";
+import type { Row } from "@/lib/types";
+import DownloadOverlay from "./DownloadOverlay";
+import UploadOverlay from "./UploadOverlay";
+import VersionHistory from "./VersionHistory";
 
 interface MenuPos {
   top: number;
@@ -53,6 +59,38 @@ export default function SheetToolbar() {
   const [waCheckOn, setWaCheckOn] = useState(
     () => localStorage.getItem("ss_waCheck") === "true",
   );
+  const [versionsOpen, setVersionsOpen] = useState(false);
+  const [downloadOpen, setDownloadOpen] = useState(false);
+  const [uploadRows, setUploadRows] = useState<Row[] | null>(null);
+  const pendingMerge = useRef(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    const s = useSheetStore.getState();
+    try {
+      const buf = await file.arrayBuffer();
+      const rows = parseSheetRows(buf, s.columns);
+      if (s.file?.type === "fb_cookie") {
+        rows.forEach((r) => {
+          if (r.cookies) {
+            const m = r.cookies.match(/c_user=(\d+)/);
+            if (m) r.uid = m[1];
+          }
+        });
+      }
+      if (pendingMerge.current) {
+        pendingMerge.current = false;
+        useSheetStore.getState().mergeRows(rows);
+        return;
+      }
+      setUploadRows(rows);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to read file");
+    }
+  };
 
   const close = () => setOpen(false);
 
@@ -129,9 +167,10 @@ export default function SheetToolbar() {
       .catch(() => showToast("Cannot copy"));
   };
 
-  const phase4 = (what: string) => {
+  const startUpload = (merge: boolean) => {
     close();
-    showToast(what + " — Phase 4");
+    pendingMerge.current = merge;
+    fileInputRef.current?.click();
   };
 
   return (
@@ -231,7 +270,10 @@ export default function SheetToolbar() {
         </button>
         <button
           className="sheet-more-item"
-          onClick={() => phase4("Download xlsx")}
+          onClick={() => {
+            close();
+            setDownloadOpen(true);
+          }}
         >
           <svg
             width="14"
@@ -247,10 +289,7 @@ export default function SheetToolbar() {
           </svg>
           Download xlsx
         </button>
-        <button
-          className="sheet-more-item"
-          onClick={() => phase4("Upload xlsx")}
-        >
+        <button className="sheet-more-item" onClick={() => startUpload(false)}>
           <svg
             width="14"
             height="14"
@@ -265,7 +304,7 @@ export default function SheetToolbar() {
           </svg>
           Upload xlsx
         </button>
-        <button className="sheet-more-item" onClick={() => phase4("Merge")}>
+        <button className="sheet-more-item" onClick={() => startUpload(true)}>
           <svg
             width="14"
             height="14"
@@ -282,7 +321,10 @@ export default function SheetToolbar() {
         </button>
         <button
           className="sheet-more-item"
-          onClick={() => phase4("Versions")}
+          onClick={() => {
+            close();
+            setVersionsOpen(true);
+          }}
         >
           <svg
             width="14"
@@ -314,6 +356,16 @@ export default function SheetToolbar() {
           </div>
         ))}
       </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".xlsx,.xls"
+        style={{ display: "none" }}
+        onChange={handleFileChange}
+      />
+      <VersionHistory open={versionsOpen} onClose={() => setVersionsOpen(false)} />
+      <DownloadOverlay open={downloadOpen} onClose={() => setDownloadOpen(false)} />
+      <UploadOverlay rows={uploadRows} onClose={() => setUploadRows(null)} />
     </>
   );
 }

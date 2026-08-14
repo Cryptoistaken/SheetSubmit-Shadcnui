@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
+import { api } from "./api";
 import { FILE_TYPE_DEFS } from "./types";
-import type { ColumnDef, FileType, Row } from "./types";
+import type { ColumnDef, FileType, Row, WaCacheEntry } from "./types";
 
 export function genId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -136,4 +137,112 @@ export function downloadXlsx(rows: Row[], columns: ColumnDef[], fileName: string
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+/** Parse the first sheet of an xlsx into rows for an open file (old sheet.js
+ * header detection: match column key/label on row 0, else positional). */
+export function parseSheetRows(
+  arrayBuffer: ArrayBuffer,
+  columns: ColumnDef[],
+): Row[] {
+  const wb = XLSX.read(arrayBuffer, { type: "array" });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const json = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1 });
+  if (json.length < 1) throw new Error("File is empty");
+  const headers = (json[0] || []).map((h) => String(h).toLowerCase().trim());
+  let colMap: { key: string; idx: number }[];
+  let dataStart: number;
+  const matchedCols = columns.filter(
+    (c) =>
+      headers.indexOf(c.key.toLowerCase()) !== -1 ||
+      headers.indexOf(c.label.toLowerCase()) !== -1,
+  );
+  if (matchedCols.length > 0) {
+    colMap = matchedCols.map((c) => {
+      let idx = headers.indexOf(c.key.toLowerCase());
+      if (idx === -1) idx = headers.indexOf(c.label.toLowerCase());
+      return { key: c.key, idx };
+    });
+    dataStart = 1;
+  } else {
+    colMap = columns.map((c, i) => ({ key: c.key, idx: i }));
+    dataStart = 0;
+  }
+  const rows: Row[] = [];
+  for (let i = dataStart; i < json.length; i++) {
+    const row: Row = {};
+    let hasData = false;
+    const source = json[i] || [];
+    colMap.forEach((cm) => {
+      const val = source[cm.idx] || "";
+      row[cm.key] = String(val);
+      if (val) hasData = true;
+    });
+    if (hasData) rows.push(row);
+  }
+  if (rows.length === 0) throw new Error("No data rows found");
+  return rows;
+}
+
+/** Sheet-level download (old _doDownload): uid column excluded, no header row,
+ * filename "<name><suffix> [N].xlsx". Returns false when nothing to download. */
+export function downloadSheetRows(
+  rows: Row[],
+  columns: ColumnDef[],
+  name: string,
+  filterFn?: (row: Row) => boolean,
+  suffix?: string,
+): boolean {
+  const dlCols = columns.filter((c) => c.key !== "uid");
+  const data: string[][] = [];
+  let hasData = false;
+  rows.forEach((row) => {
+    if (filterFn && !filterFn(row)) return;
+    const isEmpty = dlCols.every((c) => !row[c.key]);
+    if (!isEmpty) {
+      hasData = true;
+      data.push(dlCols.map((c) => row[c.key] || ""));
+    }
+  });
+  if (!hasData) return false;
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+  XLSX.writeFile(wb, name + (suffix || "") + " [" + data.length + "].xlsx");
+  return true;
+}
+
+/** Pre-fill wa_status/wa_ban_reason from the ss:wa: cache (old hydrateWaCache,
+ * used on home xlsx import so imported rows show WA state without re-checking). */
+export async function hydrateWaCache(rows: Row[]): Promise<void> {
+  try {
+    if (!rows || !rows.length) return;
+    const uidArr: string[] = [];
+    rows.forEach((row) => {
+      let uid = row.uid ?? null;
+      if (!uid && row.cookies) {
+        const m = row.cookies.match(/c_user=(\d+)/);
+        if (m) uid = m[1];
+      }
+      if (uid) uidArr.push(uid);
+    });
+    if (!uidArr.length) return;
+    const res = await api.getWaCache(uidArr);
+    const cache = (res?.cache ?? {}) as Record<string, WaCacheEntry>;
+    rows.forEach((row) => {
+      let uid = row.uid ?? null;
+      if (!uid && row.cookies) {
+        const m = row.cookies.match(/c_user=(\d+)/);
+        if (m) uid = m[1];
+      }
+      const hit = uid ? cache[uid] : null;
+      if (!hit || !hit.status) return;
+      if (hit.status === "eligible" || hit.status === "ineligible") {
+        row.wa_status = hit.status;
+        row.wa_ban_reason = hit.banReason ?? null;
+      }
+    });
+  } catch {
+    // swallow — old app ignores cache errors
+  }
 }
