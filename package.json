@@ -1,0 +1,16 @@
+{
+  "name": "sheetsubmit-shadcnui",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SheetSubmit — React + shadcn/ui frontend with TypeScript backend",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "bun run --cwd apps/web dev",
+    "dev:server": "bun run --cwd apps/server dev",
+    "build": "bun run --cwd apps/web build",
+    "typecheck": "bun run --cwd apps/web typecheck && bun run --cwd apps/server typecheck"
+  }
+}
