@@ -65,7 +65,35 @@ export default function SheetPage() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") useSheetStore.getState().exitSelectionMode();
+      const store = useSheetStore.getState();
+      const target = e.target as HTMLElement | null;
+      const typing =
+        target?.tagName === "INPUT" ||
+        target?.tagName === "TEXTAREA" ||
+        target?.isContentEditable;
+      if (e.key === "Escape") {
+        useSheetStore.getState().exitSelectionMode();
+        return;
+      }
+      if (typing || !store.isDesktop) return;
+      if (e.key === "Delete" || e.key === "Backspace") {
+        if (store.selectionMode) {
+          e.preventDefault();
+          store.deleteSelected();
+        }
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        store.selectAllCells();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c") {
+        if (store.selectionMode) {
+          e.preventDefault();
+          void store.copySelected();
+        }
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);

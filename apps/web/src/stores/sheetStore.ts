@@ -12,6 +12,7 @@ import { getFileBehavior } from "@/features/filetypes";
 import { getCachedTOTP } from "@/features/filetypes/totp";
 import { toast } from "@/lib/toast";
 import { vibrate } from "@/lib/utils";
+import { IS_DESKTOP } from "@/lib/device";
 
 export interface CellDelta {
   rowIdx: number;
@@ -164,6 +165,7 @@ export interface SheetState {
   hasDuplicates: boolean;
   crossDups: Record<string, unknown[]>;
   checkRunning: boolean;
+  isDesktop: boolean;
 
   openFile: (id: string) => Promise<void>;
   closeFile: () => void;
@@ -193,6 +195,14 @@ export interface SheetState {
   exitSelectionMode: () => void;
   selectAllCells: () => void;
   unselectAll: () => void;
+  selectCellOnly: (rowIdx: number, colKey: string) => void;
+  selectRange: (
+    r1: number,
+    c1: string,
+    r2: number,
+    c2: string,
+    additive: boolean,
+  ) => void;
   deleteSelected: () => void;
   copySelected: () => Promise<void>;
   addRow: () => void;
@@ -213,6 +223,7 @@ export interface SheetState {
   restoreVersion: (v: number) => Promise<boolean>;
   mergeRows: (incoming: Row[]) => void;
   applyUpload: (mode: "replace" | "append", incoming: Row[]) => void;
+  removeEmptyRows: () => void;
   bubbleActiveRow: number;
   bubbleGetActiveRow: () => number;
   bubbleAdvanceActiveRow: () => void;
@@ -249,6 +260,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
   hasDuplicates: false,
   crossDups: {},
   checkRunning: false,
+  isDesktop: IS_DESKTOP,
   bubbleActiveRow: -1,
 
   openFile: async (id) => {
@@ -685,6 +697,54 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     get().exitSelectionMode();
   },
 
+  selectCellOnly: (rowIdx, colKey) => {
+    const row = get().rows[rowIdx];
+    if (!row) return;
+    set({
+      selectedCell: { rowIdx, colIdx: colKey, originalVal: row[colKey] ?? "" },
+      draft: row[colKey] ?? "",
+      qebOpen: false,
+      selectionMode: false,
+      selectedItems: new Set(),
+      selRows: new Set(),
+      selCols: new Set(),
+    });
+  },
+
+  selectRange: (r1, c1, r2, c2, additive) => {
+    const s = get();
+    const colIndex = new Map<string, number>();
+    s.columns.forEach((c, i) => colIndex.set(c.key, i));
+    const i1 = colIndex.get(c1);
+    const i2 = colIndex.get(c2);
+    if (i1 === undefined || i2 === undefined) return;
+    const minCol = Math.min(i1, i2);
+    const maxCol = Math.max(i1, i2);
+    const minRow = Math.max(0, Math.min(r1, r2));
+    const maxRow = Math.min(s.rows.length - 1, Math.max(r1, r2));
+    if (minRow > maxRow) return;
+    const selectedItems = additive ? new Set(s.selectedItems) : new Set<string>();
+    for (let r = minRow; r <= maxRow; r++) {
+      for (let ci = minCol; ci <= maxCol; ci++) {
+        const col = s.columns[ci];
+        if (col) selectedItems.add(`${r}:${col.key}`);
+      }
+    }
+    const { selRows, selCols } = updateSelFlags(
+      selectedItems,
+      s.columns.length,
+      s.rows.length,
+    );
+    set({
+      selectionMode: true,
+      qebOpen: false,
+      selectedCell: null,
+      selectedItems,
+      selRows,
+      selCols,
+    });
+  },
+
   deleteSelected: () => {
     const s = get();
     if (!s.selectionMode) return;
@@ -939,7 +999,6 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     }
     const behavior = getFileBehavior(s.file?.type ?? "fb_cookie");
     if (!behavior?.checkAccounts) return;
-    const preCheckRows = s.rows.map((r) => ({ ...r }));
     const rows = s.rows.map((r) => ({ ...r }));
     rows.forEach((row) => {
       const isEmpty = s.columns.every((c) => !row[c.key]);
@@ -965,21 +1024,14 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
           });
         }
       });
-      const undoStack: UndoEntry[] = [
-        ...s.undoStack,
-        { type: "rows" as const, prevRows: preCheckRows },
-      ];
-      if (undoStack.length > 100) undoStack.shift();
       set({
         rows,
-        undoStack,
-        redoStack: [],
         apiLogs,
         isDirty: true,
         checkRunning: false,
         ...recomputeMarks(rows, s.crossDups, s.columns),
       });
-      get().persist("check");
+      get().persist();
       toast(
         `Check done — ${result.valid} valid, ${result.dead} dead, ${result.uncertain} uncertain`,
       );
@@ -1009,8 +1061,8 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     const s = get();
     if (s.file?.type !== "fb_cookie") return;
     const rows = s.rows.map((r) => ({ ...r }));
-    const waRows: { row: Row; uid: string | null }[] = [];
-    rows.forEach((row) => {
+    const waRows: { row: Row; uid: string | null; idx: number }[] = [];
+    rows.forEach((row, idx) => {
       const match =
         row.status === "good" &&
         row.wa_status !== "eligible" &&
@@ -1022,7 +1074,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
           const m = row.cookies.match(/c_user=(\d+)/);
           if (m) uid = m[1];
         }
-        waRows.push({ row, uid });
+        waRows.push({ row, uid, idx });
       }
     });
     if (!waRows.length) return;
@@ -1074,6 +1126,19 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
       await Promise.all(
         batch.map(async (i) => {
           const w = live[i];
+          const apply = (wa_status: string, wa_ban_reason?: string | null) => {
+            const newRow: Row = { ...w.row, wa_status };
+            if (wa_ban_reason !== undefined) newRow.wa_ban_reason = wa_ban_reason;
+            rows[w.idx] = newRow;
+            live[i] = { ...w, row: newRow };
+            if (get().fileId !== s.fileId) return;
+            const cur = get();
+            set({
+              rows: rows.slice(),
+              isDirty: true,
+              ...recomputeMarks(rows, cur.crossDups, cur.columns),
+            });
+          };
           try {
             const wa = (await api.waCheck(w.row.cookies ?? "")) as {
               eligible?: boolean;
@@ -1081,13 +1146,12 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
               banReason?: string | null;
             } | null;
             if (wa && wa.eligible === true) {
-              w.row.wa_status = "eligible";
+              apply("eligible");
             } else {
-              w.row.wa_status = wa?.error ? "error" : "ineligible";
-              w.row.wa_ban_reason = wa ? wa.banReason ?? null : null;
+              apply(wa?.error ? "error" : "ineligible", wa ? wa.banReason ?? null : null);
             }
           } catch {
-            w.row.wa_status = "error";
+            apply("error");
           }
         }),
       );
@@ -1183,12 +1247,27 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
 
   applyUpload: (mode, incoming) => {
     const s = get();
+    let lastDataIdx = -1;
+    s.rows.forEach((row, idx) => {
+      if (s.columns.some((c) => row[c.key])) lastDataIdx = idx;
+    });
+    const isEmpty = lastDataIdx === -1;
     if (mode === "replace") {
       const rows = [...incoming];
       while (rows.length < 100) rows.push(makeEmptyRow(s.columns));
+      let undoStack: UndoEntry[];
+      if (isEmpty) {
+        undoStack = [
+          ...s.undoStack,
+          { type: "rows", prevRows: s.rows.map((r) => ({ ...r })) },
+        ];
+        if (undoStack.length > 100) undoStack.shift();
+      } else {
+        undoStack = [];
+      }
       set({
         rows,
-        undoStack: [],
+        undoStack,
         redoStack: [],
         isDirty: true,
         selectedCell: null,
@@ -1198,10 +1277,21 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
       get().persist("replace");
       toast(`Replaced with ${incoming.length} rows`);
     } else {
-      const rows = s.rows.concat(incoming);
+      const rows = s.rows.slice();
+      rows.splice(lastDataIdx + 1, 0, ...incoming);
+      let undoStack: UndoEntry[];
+      if (isEmpty) {
+        undoStack = [
+          ...s.undoStack,
+          { type: "rows", prevRows: s.rows.map((r) => ({ ...r })) },
+        ];
+        if (undoStack.length > 100) undoStack.shift();
+      } else {
+        undoStack = [];
+      }
       set({
         rows,
-        undoStack: [],
+        undoStack,
         redoStack: [],
         isDirty: true,
         ...recomputeMarks(rows, s.crossDups, s.columns),
@@ -1210,6 +1300,48 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
       toast(`Appended ${incoming.length} rows`);
     }
     void refreshCrossDups(s.fileId);
+  },
+
+  removeEmptyRows: () => {
+    const s = get();
+    const columns = s.columns;
+    let lastDataIdx = -1;
+    s.rows.forEach((row, idx) => {
+      if (columns.some((c) => row[c.key])) lastDataIdx = idx;
+    });
+    if (lastDataIdx < 0) {
+      toast("No data rows to clean");
+      return;
+    }
+    const used = s.rows.slice(0, lastDataIdx + 1);
+    const tail = s.rows.slice(lastDataIdx + 1);
+    const cleaned = used.filter((row) => columns.some((c) => row[c.key]));
+    const removed = used.length - cleaned.length;
+    if (removed === 0) {
+      toast("No empty rows to remove");
+      return;
+    }
+    const undoStack: UndoEntry[] = [
+      ...s.undoStack,
+      { type: "rows", prevRows: s.rows.map((r) => ({ ...r })) },
+    ];
+    if (undoStack.length > 100) undoStack.shift();
+    const rows = cleaned.concat(tail);
+    set({
+      rows,
+      undoStack,
+      redoStack: [],
+      isDirty: true,
+      ...recomputeMarks(rows, s.crossDups, s.columns),
+      selectedCell: null,
+      qebOpen: false,
+      selectionMode: false,
+      selectedItems: new Set(),
+      selRows: new Set(),
+      selCols: new Set(),
+    });
+    get().persist("clean");
+    toast(`Removed ${removed} empty row${removed === 1 ? "" : "s"}`);
   },
 
   bubbleGetActiveRow: () => {

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { useConfirm } from "@/lib/confirm";
 import { useToast } from "@/lib/toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { FILE_TYPE_DEFS } from "@/lib/types";
 import type { AdminUser, ArchiveFile } from "@/lib/types";
 import { downloadXlsx } from "@/lib/xlsx";
@@ -15,6 +16,7 @@ function userName(u: { firstName?: string; lastName?: string }): string {
 export default function AdminView() {
   const showToast = useToast();
   const confirm = useConfirm();
+  const { user: me } = useAuth();
 
   const [stats, setStats] = useState<{ totalUsers: number; totalFiles: number } | null>(null);
   const [users, setUsers] = useState<AdminUser[] | null>(null);
@@ -64,6 +66,22 @@ export default function AdminView() {
     await api.adminDeleteUser(detailUser.id);
     showToast("User deleted");
     showList();
+  };
+
+  const banUser = async () => {
+    if (!detailUser) return;
+    await api.adminBanUser(detailUser.id);
+    setDetailUser({ ...detailUser, banned: true });
+    showToast("User banned");
+    loadList();
+  };
+
+  const unbanUser = async () => {
+    if (!detailUser) return;
+    await api.adminUnbanUser(detailUser.id);
+    setDetailUser({ ...detailUser, banned: false });
+    showToast("User unbanned");
+    loadList();
   };
 
   const removeFile = async (fileId: string) => {
@@ -152,9 +170,20 @@ export default function AdminView() {
               </div>
             </div>
             <div className="admin-detail-actions">
-              <button className="btn btn-danger btn-sm" onClick={deleteUser}>
-                Delete User
-              </button>
+              {detailUser.banned ? (
+                <button className="btn btn-sm" onClick={unbanUser}>
+                  Unban User
+                </button>
+              ) : (
+                <button className="btn btn-danger btn-sm" onClick={banUser}>
+                  Ban User
+                </button>
+              )}
+              {detailUser.id !== me?.id ? (
+                <button className="btn btn-danger btn-sm" onClick={deleteUser}>
+                  Delete User
+                </button>
+              ) : null}
             </div>
           </div>
         </div>
@@ -389,7 +418,24 @@ export default function AdminView() {
                       )}
                     </div>
                     <div className="admin-user-info">
-                      <div className="admin-user-name">{name}</div>
+                      <div className="admin-user-name">
+                        {name}
+                        {u.banned ? (
+                          <span
+                            style={{
+                              marginLeft: 6,
+                              fontSize: 10,
+                              fontWeight: 700,
+                              color: "var(--red)",
+                              background: "var(--red-bg)",
+                              padding: "2px 6px",
+                              borderRadius: 4,
+                            }}
+                          >
+                            BANNED
+                          </span>
+                        ) : null}
+                      </div>
                       <div className="admin-user-username">
                         {u.username ? "@" + u.username : "ID: " + u.id}
                       </div>

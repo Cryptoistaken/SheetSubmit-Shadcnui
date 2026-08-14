@@ -60,14 +60,15 @@ adminRouter.get("/users", requireAuth, requireAdmin, async (_req, res) => {
         p.get(key("user:" + id));
         p.get(key("files:" + id));
         p.get(key("archive:" + id));
+        p.get(key("ban:" + id));
       });
       const results = (await p.exec()) || [];
       for (let i = 0; i < userIds.length; i++) {
-        const userData = results[i * 3][1];
+        const userData = results[i * 4][1];
         console.log(
           "[Admin Users] id=" + userIds[i] +
           " userData=" + (userData ? "exists" : "null") +
-          " filesData=" + (results[i * 3 + 1][1] ? "exists" : "null"),
+          " filesData=" + (results[i * 4 + 1][1] ? "exists" : "null"),
         );
         if (!userData) continue;
         let user: Record<string, any>;
@@ -77,7 +78,7 @@ adminRouter.get("/users", requireAuth, requireAdmin, async (_req, res) => {
           console.log("[Admin Users] parse error for", userIds[i]);
           continue;
         }
-        const filesData = results[i * 3 + 1][1];
+        const filesData = results[i * 4 + 1][1];
         const files = filesData ? (() => {
           try {
             return JSON.parse(filesData as string);
@@ -85,7 +86,7 @@ adminRouter.get("/users", requireAuth, requireAdmin, async (_req, res) => {
             return [];
           }
         })() : [];
-        const archivedData = results[i * 3 + 2][1];
+        const archivedData = results[i * 4 + 2][1];
         const archived = archivedData ? (() => {
           try {
             return JSON.parse(archivedData as string);
@@ -93,8 +94,10 @@ adminRouter.get("/users", requireAuth, requireAdmin, async (_req, res) => {
             return [];
           }
         })() : [];
+        const banData = results[i * 4 + 3][1];
         user.fileCount = files.length;
         user.archivedCount = archived.length;
+        user.banned = !!banData;
         user.photoUrl = user.fileId ? "/api/auth/photo/" + user.id : null;
         users.push(user);
       }
@@ -118,10 +121,11 @@ adminRouter.get("/users/search", requireAuth, requireAdmin, async (req, res) => 
       userIds.forEach((id) => {
         p.get(key("user:" + id));
         p.get(key("files:" + id));
+        p.get(key("ban:" + id));
       });
       const results = (await p.exec()) || [];
       for (let i = 0; i < userIds.length; i++) {
-        const userData = results[i * 2][1];
+        const userData = results[i * 3][1];
         if (!userData) continue;
         let user: Record<string, any>;
         try {
@@ -135,7 +139,7 @@ adminRouter.get("/users/search", requireAuth, requireAdmin, async (req, res) => 
           const uid = String(user.id);
           if (name.indexOf(q) === -1 && uname.indexOf(q) === -1 && uid.indexOf(q) === -1) continue;
         }
-        const filesData = results[i * 2 + 1][1];
+        const filesData = results[i * 3 + 1][1];
         const files = filesData ? (() => {
           try {
             return JSON.parse(filesData as string);
@@ -143,7 +147,9 @@ adminRouter.get("/users/search", requireAuth, requireAdmin, async (req, res) => 
             return [];
           }
         })() : [];
+        const banData = results[i * 3 + 2][1];
         user.fileCount = files.length;
+        user.banned = !!banData;
         user.photoUrl = user.fileId ? "/api/auth/photo/" + user.id : null;
         users.push(user);
       }
@@ -167,6 +173,7 @@ adminRouter.get("/user/:userId", requireAuth, requireAdmin, async (req, res) => 
   user.photoUrl = user.fileId ? "/api/auth/photo/" + user.id : null;
   user.fileCount = files.length;
   user.archivedCount = archived.length;
+  user.banned = !!(await getJSON("ban:" + req.params.userId));
   user.files = files;
   res.json(user);
 });
@@ -572,4 +579,24 @@ adminRouter.put("/user/:userId", requireAuth, requireAdmin, async (req, res) => 
   });
   await setJSON("user:" + req.params.userId, user);
   res.json(user);
+});
+
+adminRouter.post("/user/:userId/ban", requireAuth, requireAdmin, async (req, res) => {
+  const user = await getJSON("user:" + req.params.userId);
+  if (!user) {
+    res.status(404).json({ error: "user not found" });
+    return;
+  }
+  await setJSON("ban:" + req.params.userId, { ts: Date.now() });
+  res.json({ ok: true });
+});
+
+adminRouter.post("/user/:userId/unban", requireAuth, requireAdmin, async (req, res) => {
+  const user = await getJSON("user:" + req.params.userId);
+  if (!user) {
+    res.status(404).json({ error: "user not found" });
+    return;
+  }
+  await delKey("ban:" + req.params.userId);
+  res.json({ ok: true });
 });

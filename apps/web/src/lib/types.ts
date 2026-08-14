@@ -99,4 +99,5 @@ export interface HistoryResult {
 export type AdminUser = User & {
   fileCount: number;
   archivedCount: number;
+  banned?: boolean;
 };

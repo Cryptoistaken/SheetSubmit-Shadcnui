@@ -10,7 +10,10 @@ export default function UploadOverlay({
   onClose: () => void;
 }) {
   const applyUpload = useSheetStore((s) => s.applyUpload);
-  const currentCount = useSheetStore((s) => s.rows.length);
+  const columns = useSheetStore((s) => s.columns);
+  const currentCount = useSheetStore(
+    (s) => s.rows.filter((r) => columns.some((c) => r[c.key])).length,
+  );
   const confirm = useConfirm();
 
   if (!rows) return null;

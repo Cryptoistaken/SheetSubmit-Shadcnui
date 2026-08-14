@@ -57,6 +57,13 @@ authRouter.get("/telegram", async (req, res) => {
 
   console.log("[Auth] user=" + (userInfo.username || userInfo.firstName) + " id=" + userInfo.id);
 
+  const banned = await getJSON("ban:" + userInfo.id);
+  if (banned) {
+    console.log("[Auth] blocked login for banned user id=" + userInfo.id);
+    res.status(403).json({ error: "account banned" });
+    return;
+  }
+
   const existing = (await getJSON<Record<string, unknown>>("user:" + userInfo.id)) || {};
   const merged: Record<string, unknown> = {
     id: userInfo.id,
@@ -135,6 +142,12 @@ authRouter.get("/me", async (req, res) => {
     return;
   }
   const user = await getJSON<Record<string, any>>("user:" + session.userId);
+  const banned = await getJSON("ban:" + session.userId);
+  if (banned) {
+    console.log("[Auth] me: banned user, returning null");
+    res.json(null);
+    return;
+  }
   if (user) {
     user.photoUrl = user.fileId ? "/api/auth/photo/" + user.id : null;
     user.isAdmin = isAdmin(user.id);

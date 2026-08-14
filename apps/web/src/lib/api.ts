@@ -155,6 +155,8 @@ export const api = {
       method: "POST",
     }),
   adminDeleteUser: (userId: string) => request<{ ok: boolean }>(`/admin/user/${userId}`, { method: "DELETE" }),
+  adminBanUser: (userId: string) => request<{ ok: boolean }>(`/admin/user/${userId}/ban`, { method: "POST" }),
+  adminUnbanUser: (userId: string) => request<{ ok: boolean }>(`/admin/user/${userId}/unban`, { method: "POST" }),
 
   // ── Auth & bot (not in old api.js; used directly by the UI) ──
   me: () => request<User | null>("/auth/me"),

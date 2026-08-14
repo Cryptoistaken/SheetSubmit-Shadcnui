@@ -28,23 +28,29 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     res.status(401).json({ error: "Not authenticated" });
     return;
   }
+  let userId: string | null = null;
   const cached = sessionCache.get(sessionId);
   if (cached && Date.now() - cached.ts < SESSION_CACHE_TTL) {
-    req.userId = cached.userId;
-    next();
+    userId = cached.userId;
+  } else {
+    const session = await getJSON<{ userId: string | number }>("session:" + sessionId);
+    if (!session) {
+      res.status(401).json({ error: "Session expired" });
+      return;
+    }
+    userId = String(session.userId);
+    sessionCache.set(sessionId, { userId, ts: Date.now() });
+    if (sessionCache.size > 1000) {
+      const firstKey = sessionCache.keys().next().value;
+      if (firstKey !== undefined) sessionCache.delete(firstKey);
+    }
+  }
+  const banned = await getJSON("ban:" + userId);
+  if (banned) {
+    res.status(403).json({ error: "account banned" });
     return;
   }
-  const session = await getJSON<{ userId: string | number }>("session:" + sessionId);
-  if (!session) {
-    res.status(401).json({ error: "Session expired" });
-    return;
-  }
-  sessionCache.set(sessionId, { userId: String(session.userId), ts: Date.now() });
-  if (sessionCache.size > 1000) {
-    const firstKey = sessionCache.keys().next().value;
-    if (firstKey !== undefined) sessionCache.delete(firstKey);
-  }
-  req.userId = String(session.userId);
+  req.userId = userId;
   next();
 }
 

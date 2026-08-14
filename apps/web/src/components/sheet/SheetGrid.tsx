@@ -45,6 +45,11 @@ export default function SheetGrid() {
   const clickTarget = useRef<Element | null>(null);
   const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTap = useRef<{ row: number; col: string; t: number } | null>(null);
+  const dragStart = useRef<{ row: number; col: string } | null>(null);
+  const dragActive = useRef(false);
+  const dragMoved = useRef(false);
+  const dragAdditive = useRef(false);
+  const suppressClick = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -70,9 +75,51 @@ export default function SheetGrid() {
     }
   }
 
+  function endDrag() {
+    dragActive.current = false;
+    dragStart.current = null;
+  }
+
+  function handlePointerMove(e: PointerEvent) {
+    if (!dragActive.current || !dragStart.current) return;
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const td = el?.closest("td.dc") as HTMLElement | null;
+    if (!td) return;
+    const rowIdx = Number(td.dataset.row);
+    const colKey = td.dataset.col ?? "";
+    const start = dragStart.current;
+    if (start.row !== rowIdx || start.col !== colKey) {
+      dragMoved.current = true;
+      useSheetStore
+        .getState()
+        .selectRange(start.row, start.col, rowIdx, colKey, dragAdditive.current);
+    }
+  }
+
+  function handlePointerUp() {
+    cancelHold();
+    if (dragActive.current) {
+      suppressClick.current = dragMoved.current;
+      endDrag();
+    }
+  }
+
+  useEffect(() => {
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+  }, []);
+
   function handleClick(e: ReactMouseEvent<HTMLDivElement>) {
     if (holdActive.current) {
       holdActive.current = false;
+      return;
+    }
+    if (suppressClick.current) {
+      suppressClick.current = false;
       return;
     }
     const t = e.target as HTMLElement | null;
@@ -130,6 +177,31 @@ export default function SheetGrid() {
     if (td) {
       const rowIdx = Number(td.dataset.row);
       const colKey = td.dataset.col ?? "";
+      if (useSheetStore.getState().isDesktop) {
+        if (e.ctrlKey || e.metaKey) {
+          useSheetStore.getState().toggleSelection("cell", rowIdx, colKey);
+          return;
+        }
+        if (store.selectionMode) {
+          store.selectCellOnly(rowIdx, colKey);
+          return;
+        }
+        const now = Date.now();
+        const last = lastTap.current;
+        if (
+          last &&
+          last.row === rowIdx &&
+          last.col === colKey &&
+          now - last.t < 400
+        ) {
+          lastTap.current = null;
+          store.openQuickEdit(rowIdx, colKey);
+          return;
+        }
+        lastTap.current = { row: rowIdx, col: colKey, t: now };
+        store.selectCellOnly(rowIdx, colKey);
+        return;
+      }
       if (store.selectionMode) {
         store.toggleSelection("cell", rowIdx, colKey);
         return;
@@ -167,6 +239,39 @@ export default function SheetGrid() {
     const store = useSheetStore.getState();
 
     const td = t.closest("td.dc") as HTMLElement | null;
+    if (store.isDesktop) {
+      if (td) {
+        dragStart.current = {
+          row: Number(td.dataset.row),
+          col: td.dataset.col ?? "",
+        };
+        dragActive.current = true;
+        dragMoved.current = false;
+        dragAdditive.current = !!(e.ctrlKey || e.metaKey);
+      }
+      const dot = t.closest(".dot-cell") as HTMLElement | null;
+      if (dot) {
+        const rowIdx = Number(dot.dataset.row);
+        holdTimer.current = setTimeout(() => {
+          holdTimer.current = null;
+          holdActive.current = true;
+          const result = useSheetStore.getState().onDotHold(rowIdx);
+          if (result) {
+            const rect = dot.getBoundingClientRect();
+            setLogPopup({
+              logs: result.logs,
+              label: result.label,
+              crossInfo: result.crossInfo,
+              wa: result.wa,
+              x: Math.max(4, rect.right - 340),
+              y: rect.bottom + 4,
+            });
+          }
+        }, 500);
+      }
+      return;
+    }
+
     if (td && !store.selectionMode) {
       const rowIdx = Number(td.dataset.row);
       const colKey = td.dataset.col ?? "";
@@ -231,8 +336,8 @@ export default function SheetGrid() {
       className="sheet-wrap"
       onClick={handleClick}
       onPointerDown={handlePointerDown}
-      onPointerUp={cancelHold}
-      onPointerLeave={cancelHold}
+      onPointerUp={handlePointerUp}
+      onPointerLeave={handlePointerUp}
       onScroll={() => setLogPopup(null)}
     >
       <table className="grid" cellSpacing={0} cellPadding={0}>
