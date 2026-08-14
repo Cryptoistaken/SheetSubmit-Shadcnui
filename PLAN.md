@@ -88,7 +88,7 @@ SheetSubmit-Shadcnui/
 | **0 — Scaffold** (Vite+shadcn monorepo, tokens, theme, build boots) | ✅ Done | `e7eedb5` |
 | **0b — Logos + full skeleton** (public SVGs wired, shared pkg, server + web stubs) | ✅ Done | `957b5e2` |
 | **1 — Backend TS port** (install server deps; split `server/index.js` into modules; old frontend must run against new server unchanged) | ✅ Done | `b2f353d` |
-| **2 — Auth + Home** (device login, file grid, FAB, archive, admin; screenshots == old) | ✅ Done | *(see §4)* |
+| **2 — Auth + Home** (device login, file grid, FAB, archive, admin; screenshots == old) | ✅ Done | `b67be36` |
 | **3 — Sheet engine** (grid, editing, undo/redo, persist, quick-edit bar; custom table + memo/virtualization) | ⬜ | — |
 | **4 — Checks, versions, data ops** (check/auto-check, WA cache, history modal + diff, merge/replace xlsx, download) | ⬜ | — |
 | **5 — Bubble (Android)** (`?bubble=1&file=` mode, clipboard automation, 6s refresh, bundle size) | ⬜ | — |
@@ -99,25 +99,8 @@ SheetSubmit-Shadcnui/
 ## 4. Handoff — where we left off & how to resume from any state
 
 ### Last state (as of last update)
-- **Phase 1 (backend TS port) complete** — commit `b2f353d`.
-  - All 60 old endpoints ported to `apps/server/src` with identical paths/methods/
-    status codes/JSON shapes/Redis keys (verified by a line-by-line subagent parity
-    diff of old `server/index.js` vs the new modules).
-  - Fixed during port: Telegram webhook must be at ROOT `/webhook/tg` (was mounted
-    under `/api` — dead bot in webhook/production mode); `config/env.ts` repoRoot
-    was one level too shallow (`../../..` → `apps/`), breaking `STATIC_ROOT` /
-    `.env` lookup — now `../../../../`.
-  - Removed empty stubs `routes/cells.ts`, `lib/json.ts` (unused).
-  - Smoke-tested against a throwaway local Redis (Docker `redis:7-alpine` on
-    :6390): health, auth 401s, files CRUD, persist→history snapshot, rows/cell/
-    undo/logs, history list/detail/name/restore/fork, sync, cross-dups, archive
-    delete/restore/batch-delete, admin 403/200, WA cache, SPA serving — all pass
-    with byte-correct `ss:` keys. Server boots clean; `tsc` + `bun run build` pass.
-  - **Not yet done (needs live creds):** full old-frontend click-through against the
-    new server (requires a real Telegram session against production Redis). The
-    old frontend should run unchanged with `STATIC_ROOT` pointed at the old repo
-    root and `REDIS_URL` at production — see gotchas for the exact recipe.
-- **Phase 2 (Auth + Home) complete** — React UI for login/home/archive/admin.
+- **Phase 2 (Auth + Home) complete — commit `b67be36`.**
+  - React UI for login/home/archive/admin.
   - Auth: `AuthContext` (`/api/auth/me` on mount, error or `null` → unauthenticated),
     `LoginScreen` (Telegram `?start=login` button from `/api/bot/info`), `Topbar`
     (theme-aware logo, back button on `/file/:id`, `/api/health` poll every 15s
@@ -141,6 +124,24 @@ SheetSubmit-Shadcnui/
     without `TG_BOT_TOKEN` → login button shows "Connection failed" (old-app parity).
   - Known gaps: SheetPage is a stub (Phase 3); old-app screenshot diff not yet
     run (needs live creds + pixel comparison); bubble/device-login flow is Phase 5.
+- **Phase 1 recap (historical) — commit `b2f353d`:**
+  - All 60 old endpoints ported to `apps/server/src` with identical paths/methods/
+    status codes/JSON shapes/Redis keys (verified by a line-by-line subagent parity
+    diff of old `server/index.js` vs the new modules).
+  - Fixed during port: Telegram webhook must be at ROOT `/webhook/tg` (was mounted
+    under `/api` — dead bot in webhook/production mode); `config/env.ts` repoRoot
+    was one level too shallow (`../../..` → `apps/`), breaking `STATIC_ROOT` /
+    `.env` lookup — now `../../../../`.
+  - Removed empty stubs `routes/cells.ts`, `lib/json.ts` (unused).
+  - Smoke-tested against a throwaway local Redis (Docker `redis:7-alpine` on
+    :6390): health, auth 401s, files CRUD, persist→history snapshot, rows/cell/
+    undo/logs, history list/detail/name/restore/fork, sync, cross-dups, archive
+    delete/restore/batch-delete, admin 403/200, WA cache, SPA serving — all pass
+    with byte-correct `ss:` keys. Server boots clean; `tsc` + `bun run build` pass.
+  - **Not yet done (needs live creds):** full old-frontend click-through against the
+    new server (requires a real Telegram session against production Redis). The
+    old frontend should run unchanged with `STATIC_ROOT` pointed at the old repo
+    root and `REDIS_URL` at production — see gotchas for the exact recipe.
 - Phases 3–6 not started.
 
 ### Resume recipe (any session/AI, from any state)
