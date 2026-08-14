@@ -87,7 +87,7 @@ SheetSubmit-Shadcnui/
 |---|---|---|
 | **0 — Scaffold** (Vite+shadcn monorepo, tokens, theme, build boots) | ✅ Done | `e7eedb5` |
 | **0b — Logos + full skeleton** (public SVGs wired, shared pkg, server + web stubs) | ✅ Done | `957b5e2` |
-| **1 — Backend TS port** (install server deps; split `server/index.js` into modules; old frontend must run against new server unchanged) | ✅ Done | `9f6c30e` |
+| **1 — Backend TS port** (install server deps; split `server/index.js` into modules; old frontend must run against new server unchanged) | ✅ Done | `b2f353d` |
 | **2 — Auth + Home** (device login, file grid, FAB, archive, admin; screenshots == old) | ⬜ | — |
 | **3 — Sheet engine** (grid, editing, undo/redo, persist, quick-edit bar; custom table + memo/virtualization) | ⬜ | — |
 | **4 — Checks, versions, data ops** (check/auto-check, WA cache, history modal + diff, merge/replace xlsx, download) | ⬜ | — |
@@ -99,7 +99,7 @@ SheetSubmit-Shadcnui/
 ## 4. Handoff — where we left off & how to resume from any state
 
 ### Last state (as of last update)
-- **Phase 1 (backend TS port) complete** — commit `9f6c30e`.
+- **Phase 1 (backend TS port) complete** — commit `b2f353d`.
   - All 60 old endpoints ported to `apps/server/src` with identical paths/methods/
     status codes/JSON shapes/Redis keys (verified by a line-by-line subagent parity
     diff of old `server/index.js` vs the new modules).
