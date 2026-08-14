@@ -94,13 +94,41 @@ SheetSubmit-Shadcnui/
 | **3 — Sheet engine** (grid, editing, undo/redo, persist, quick-edit bar; custom table + memo/virtualization; boneyard skeleton loading) | ✅ Done | `6becf75` |
 | **4 — Checks, versions, data ops** (check/auto-check, WA cache, history modal + diff, merge/replace xlsx, download) | ✅ Done | `4cfacf2` |
 | **5 — Bubble (Android)** (`?bubble=1&file=` mode, clipboard automation, 6s refresh, bundle size) | ✅ Done | `74e3871` |
-| **6 — Polish & swap** (dark-mode audit, a11y, serve `dist/`, delete old frontend, Android re-verify) | ⬜ | — |
+| **6 — Polish & swap** (dark-mode audit, a11y, serve `dist/`, delete old frontend, Android re-verify) | ✅ Done* | `19b18d1` — *old-frontend deletion CANCELLED by user (old repo stays untouched); Android on-device re-verify is the user's |
 
 ---
 
 ## 4. Handoff — where we left off & how to resume from any state
 
 ### Last state (as of last update)
+- **Phase 6 (Polish & swap) — commit `19b18d1`:**
+  - **a11y pass** (audited against the Vercel Web Interface Guidelines; ~34 findings, all
+    fixed): `aria-label` on every icon-only button (undo/redo/⋮/check-arrow/download/
+    rename/delete/restore buttons — 15 spots), `aria-label` on toggle checkboxes (Night
+    mode, Floating bubble), `aria-label` on all modal/search/cell inputs (rename ×3,
+    version name, search users, cell value), `role="button"`+`tabIndex`+Enter/Space
+    `onKeyDown` on clickable divs (3 Android gear rows, 3 file cards, admin user card,
+    day-group header, column-toggle checkbox semantics `role="checkbox"`+`aria-checked`,
+    "+ Add row" cell). `color-scheme: light/dark` on `:root`/`.dark` (scrollbars/inputs
+    theme correctly; theme.ts also sets it inline), `theme-color` meta now swaps with the
+    theme in theme.ts.
+  - **Dark-mode audit:** remaining hardcoded hex in app.css is either token definitions
+    or intentional (btn-danger white-on-red, `.qeb-icon-btn.save` with `.dark` override,
+    checkmarks on colored bgs, dup/invalid amber/red) — no fixes needed. touch-action:
+    manipulation, prefers-reduced-motion, overscroll-behavior: contain, tap-highlight
+    were already ported.
+  - **Serve dist/:** already the default — `STATIC_ROOT` falls back to
+    `apps/web/dist`; the smoke server on :3999 has been serving the built app all along.
+  - **CANCELLED — old-frontend deletion:** the user explicitly said DO NOT delete the
+    old repo/codebase (B:\Studio\Tools\SheetSubmit stays intact). The swap is therefore:
+    new server serves the new `dist/`; old repo remains as the reference/source of truth.
+  - **Android re-verify:** on-device APK rebuild + WebView/bubble verification is the
+    user's (needs the old repo's CI flow + a device). Not done here.
+  - Bundle note: main chunk ~828 kB min (260 kB gzip) — xlsx (SheetJS ~450 kB) is in the
+    main chunk via static imports; a lazy split was considered and skipped (old app
+    shipped xlsx.full.min.js ~800 kB uncompressed from CDN — already better). Bubble chunk
+    is split (2.8 kB). If the WebView ever struggles, split xlsx next via dynamic import
+    in HomePage/SheetToolbar.
 - **Phase 5 (Bubble) complete — commit `74e3871`:**
   - **Android contract** (verified from `android/` source, untouched): bubble service opens
     `HOME_URL + "/?bubble=1&file=<id>"` (root path + query). Bridge `window.Android`:
@@ -497,6 +525,14 @@ cd /b/Studio/Tools/SheetSubmit && bun run   # starts old Express server
 - **`window.__ss` globals:** BubbleMode exposes `window.__ss.bubbleSkipNo2FA` and
   `window.__ss.bubbleAutomate` (Android bridge contract) and cleans them up on unmount.
   Do not rename — FloatingBubbleService.java injects these exact names.
+- **Phase 6 decision — old repo is PROTECTED:** the user cancelled the planned
+  "delete old frontend" step. B:\Studio\Tools\SheetSubmit stays as-is (reference +
+  Android CI). Do not delete/modify it; AGENTS.md rule 7 applies permanently.
+- **a11y convention going forward:** icon-only buttons get `aria-label` (+`title` kept
+  for tooltips); clickable divs that can't become `<button>` (parity CSS) get
+  `role="button"`/`tabIndex={0}` + Enter/Space `onKeyDown`; modal inputs get
+  `aria-label`. `color-scheme` lives in `:root`/`.dark` (app.css) AND inline via
+  theme.ts — keep both in sync when touching theme code.
 
 ---
 
