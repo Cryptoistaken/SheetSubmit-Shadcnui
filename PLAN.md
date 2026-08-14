@@ -69,6 +69,8 @@ SheetSubmit-Shadcnui/
 - **Frontend:** Vite 8, React 19, TypeScript ~6.0, Tailwind v4 (CSS-first, no config file),
   shadcn/ui **Nova preset** (radix primitives, lucide-react icons, Geist Variable font),
   `react-router` + `zustand` (installed, **not wired yet**), SheetJS for xlsx (later).
+  **Component policy: shadcn components are the base for all generic UI — add, then
+  modify minimally (see §6).**
 - **Dark mode:** `.dark` class on `<html>` (`@custom-variant dark` in index.css); theme
   toggle persists `ss_theme` in localStorage; favicon swaps per theme (matches old app).
 - **Tokens:** Geist values from old `css/base.css` ported into shadcn CSS variables —
@@ -89,7 +91,7 @@ SheetSubmit-Shadcnui/
 | **0b — Logos + full skeleton** (public SVGs wired, shared pkg, server + web stubs) | ✅ Done | `957b5e2` |
 | **1 — Backend TS port** (install server deps; split `server/index.js` into modules; old frontend must run against new server unchanged) | ✅ Done | `b2f353d` |
 | **2 — Auth + Home** (device login, file grid, FAB, archive, admin; screenshots == old) | ✅ Done | `b67be36` |
-| **3 — Sheet engine** (grid, editing, undo/redo, persist, quick-edit bar; custom table + memo/virtualization) | ⬜ | — |
+| **3 — Sheet engine** (grid, editing, undo/redo, persist, quick-edit bar; custom table + memo/virtualization; boneyard skeleton loading) | ✅ Done | `6becf75` |
 | **4 — Checks, versions, data ops** (check/auto-check, WA cache, history modal + diff, merge/replace xlsx, download) | ⬜ | — |
 | **5 — Bubble (Android)** (`?bubble=1&file=` mode, clipboard automation, 6s refresh, bundle size) | ⬜ | — |
 | **6 — Polish & swap** (dark-mode audit, a11y, serve `dist/`, delete old frontend, Android re-verify) | ⬜ | — |
@@ -99,7 +101,53 @@ SheetSubmit-Shadcnui/
 ## 4. Handoff — where we left off & how to resume from any state
 
 ### Last state (as of last update)
-- **Phase 2 (Auth + Home) complete — commit `b67be36`.**
+- **Phase 3 (Sheet engine) complete — commit `6becf75`.**
+  - `stores/sheetStore.ts` (zustand, ~900 ln): faithful port of old `sheet.js` state machine —
+    openFile (4 parallel fetches + cross-dups, 100-row pad, `ss_cols_<id>` visible cols),
+    commitCell (single commit pipeline: immutable row update → `onCellChange` → dup/invalid
+    marks → 300ms-debounced persist), undo/redo (client stacks, `{undo,redo}` ride every
+    persist; capped 100), QEB (open/draft/commit/cancel/paste/clear), **keyboard nav
+    `moveEdit` (NEW — user-approved)**, selection mode (tap-hold 500ms + vibrate, row/col/
+    cell toggle, select-all, copy TSV, delete, `selRows`/`selCols` derived flags),
+    addRow (+100), double/triple tap, dot TOTP + logs, `toggleVisibleCol`.
+  - Components: `SheetGrid` (memo'd `GridRow`/`GridCell` w/ per-cell zustand selectors —
+    typing only re-renders the active cell; table = old DOM structure exactly; delegation:
+    click/dblclick/triple-tap 400ms/pointer-hold 500ms; dot-hold log popup), `QuickEditBar`
+    + `CellEditor` (Enter/Tab/arrows/Escape), `SelectionBar`, `SheetToolbar` (undo/redo +
+    ⋮ more menu: Copy all + column toggles; Phase-4 items not yet rendered), `SheetPage`
+    (open/close file, `usePersist`, global Escape, boneyard `<Skeleton name="sheet-grid">`).
+  - Hooks: `usePersist` (beforeunload flush), `useUndoRedo`, `useDebounce`. `useCheck` still empty (Phase 4).
+  - Filetypes: `features/filetypes/{totp,validation,fbcookie,index}.ts` (TOTP WebCrypto SHA-1
+    + cache, validateCell, onCellChange w/ uid autofill, onDotDoubleTap, onDotHold,
+    checkAccounts ported for Phase 4). `lib/toast.tsx` gained module-level `toast()` so
+    non-React store code can toast; `lib/utils.ts` gained `vibrate`.
+  - **Boneyard skeleton loading** (user-requested): `boneyard-js` dep + vite plugin
+    (`skipInitial: true`), `src/bones/sheet-grid.bones.json` (126 bones, 6 breakpoints)
+    + generated `registry.ts` **committed**. Capture recipe below (§6).
+  - **Deviations from old app (deliberate, user-approved):** keyboard nav in QEB
+    (Tab/Shift+Tab/arrows/Enter=commit+down); clicking a DIFFERENT cell while QEB open
+    commits the draft (old silently discarded it); dot colors map to real `--cyan`/`--green`
+    tokens; sheet toolbar hidden off the file page.
+  - Verified by me: web+server `tsc` clean, `bun run --cwd apps/web build` clean. Smoke
+    test (throwaway Redis, session `smoke` → user `smoke1`, file `smoke` w/ 4 data rows):
+    grid renders 100 rows + dup/yellow dots + seeded data; QEB opens; Enter commits +
+    moves down; Tab moves right; Escape closes; undo/redo round-trip; **reload → edits
+    persist**; `ss:undo:smoke`/`ss:rows:smoke` byte-correct (trim to max(lastData+51,100));
+    row selection (3 cells, `.row-selected`/`.ms-sel`), Copy → TSV on clipboard,
+    "Copied 3 cells"; ⋮ menu opens w/ Copy all + column toggles.
+  - **KNOWN GAP — user must finish browser verification** (I'm not allowed to drive the
+    browser): column-toggle hide (was mid-test when a gear-panel/⋮ overlap bug was found
+    and fixed — retest), dot-click TOTP toast, dot-hold log popup, triple-tap, delete
+    selected, and the **screenshot diff vs old app** (Phase-3 done-criteria "grid pixels
+    match" — old app can run against the same seeded Redis: from old repo
+    `bun run` with `REDIS_URL=redis://localhost:6390 PORT=3999`).
+  - **Smoke environment is still RUNNING** for the user: Express :3000 (serves latest
+    `dist/`), Vite dev :5173, Redis `ss-smoke-redis` container on :6390 with seeded
+    session. Log in via devtools: Application → Cookies → add `session=smoke` for
+    `localhost`, then open `http://localhost:3000/file/smoke` (or :5173 for HMR). Stop
+    later: `docker rm -f ss-smoke-redis`, kill processes on :3000/:5173, delete temp
+    `.env` (gitignored).
+- **Phase 2 recap (historical) — commit `b67be36`:**
   - React UI for login/home/archive/admin.
   - Auth: `AuthContext` (`/api/auth/me` on mount, error or `null` → unauthenticated),
     `LoginScreen` (Telegram `?start=login` button from `/api/bot/info`), `Topbar`
@@ -122,8 +170,6 @@ SheetSubmit-Shadcnui/
     login screen (no session), home grid w/ cards+meta, tabs, FAB menu, gear
     panel, SheetPage stub at `/file/:id` — all render. `/api/bot/info` 404s
     without `TG_BOT_TOKEN` → login button shows "Connection failed" (old-app parity).
-  - Known gaps: SheetPage is a stub (Phase 3); old-app screenshot diff not yet
-    run (needs live creds + pixel comparison); bubble/device-login flow is Phase 5.
 - **Phase 1 recap (historical) — commit `b2f353d`:**
   - All 60 old endpoints ported to `apps/server/src` with identical paths/methods/
     status codes/JSON shapes/Redis keys (verified by a line-by-line subagent parity
@@ -142,7 +188,7 @@ SheetSubmit-Shadcnui/
     new server (requires a real Telegram session against production Redis). The
     old frontend should run unchanged with `STATIC_ROOT` pointed at the old repo
     root and `REDIS_URL` at production — see gotchas for the exact recipe.
-- Phases 3–6 not started.
+- Phases 4–6 not started.
 
 ### Resume recipe (any session/AI, from any state)
 1. Read this file (you are here). Read `AGENTS.md` for rules.
@@ -243,6 +289,27 @@ cd /b/Studio/Tools/SheetSubmit && bun run   # starts old Express server
 - **`/api/bot/info` only exists when `TG_BOT_TOKEN` is set** — without it the
   login button falls back to "Connection failed" (matches old app behavior).
   Phase-2 UI treats a thrown `me()` error OR `null` body as unauthenticated.
+- **Build UI from shadcn pre-built components (https://ui.shadcn.com/docs), modify — don't hand-roll.** Before writing any new UI, check the shadcn catalog for a ready component (Button, Input, Dialog, DropdownMenu, Tooltip, Skeleton, Table, etc.), `npx shadcn@latest add <name>` it, then customize minimally (className/variants/composition, Geist tokens). Exception: old-app-specific widgets whose pixel-parity CSS is already ported to `app.css` (grid table/cells, QEB, sel-bar, log-popup, sheet-more-menu, row-dots) stay custom — re-styling shadcn primitives to match would cost more than ported CSS. Phase 4+ overlays (version modal, download filter dialog, upload/merge, admin) should use shadcn Dialog/DropdownMenu/Input as their base.
+- **Boneyard capture recipe (Phase 3+):** deps: `boneyard-js` (Vite plugin, `skipInitial: true` — no browser at dev-start). To (re)capture grid skeleton bones: (1) run the seeded-Redis server + `bun run dev:web`; (2) `boneyard.config.json` (apps/web) must hold `auth.cookies` with a `path: "/"` — **missing `path` makes the CLI crash** with "Cookie should have a url or a domain/path pair"; cookie value must match a seeded `ss:session:<value>`; (3) `cd apps/web && npx boneyard-js build http://localhost:5173/file/<id> --out ./src/bones` → writes `<name>.bones.json` + regenerates `registry.ts` (it imports `registerBones` from `'boneyard-js'` root, NOT `/react`). Commit both. The generated registry is a build input — `vite build` fails if `src/bones/registry.ts` is missing.
+- **`<Skeleton>` only marks while mounted:** SheetPage returns the boneyard skeleton for `status !== ready` AND adds a `__BONEYARD_BUILD`-mode branch that renders the skeleton+fixture even after load, so the capture always finds the `[data-boneyard]` marker. Without that branch the marker unmounts before the capture snapshots (0 skeletons captured).
+- **Sheet toolbar vs gear panel:** the ⋮ (`sheet-more-btn`) handler must NOT `stopPropagation()` — if it does, Topbar's click-outside listener never fires and the gear panel stays open, overlapping the more menu (gear z-800 > menu z-600) and intercepting clicks. SheetToolbar's own doc listener exempts the ⋮ button + menu via `contains()`. If both menus change, retest the overlap.
+- **QEB draft vs other cells:** the live-preview draft lives in the store; only the ACTIVE `GridCell` subscribes to it (selector returns `null` for other cells) so typing re-renders exactly one cell. Rows must be updated immutably (row object replaced) or memo'd cells never re-render.
+- **`Row` type widened** to `Record<string, string | null | undefined>` in BOTH `apps/web/src/lib/types.ts` and `packages/shared/src/types.ts` (real data has `wa_ban_reason: null`; old type would crash at runtime on `null`).
+- **`openFile` race guard:** module-level `openSeq` counter — a stale in-flight `openFile` result (fast file-to-file navigation or unmount mid-fetch) is discarded (`seq !== openSeq` → return). `closeFile()` bumps the counter too.
+- **Phase-3 deviations logged:** QEB keyboard nav (Enter=commit+down, Tab/Shift+Tab, arrows) is NEW (user-approved; old app had Enter/Escape only); clicking a different cell while QEB open COMMITS the draft (old discarded it — data-loss bug); log-popup cross-file dup section deferred to Phase 4 (store `onDotHold` returns only logs+label); `checkAccounts` ported but its apiLogs pushes are omitted until Phase 4 wires the check flow; `useCheck.ts` still empty.
+- **Skeleton loading screens: `boneyard-js`** (https://github.com/0xGF/boneyard,
+  MIT, 6.8k★ — pixel-perfect skeletons captured from real UI, no manual
+  measurement). Added at user request; related to the sheet loading state
+  (Phase 3 — the old app had no loader, just a blank 100-row pad). Integration:
+  `<Skeleton name=...>` from `boneyard-js/react` wraps the grid; `boneyardPlugin()`
+  in `vite.config.ts`; `import "./bones/registry"` in `main.tsx`. The Vite plugin
+  supports `boneyard.config.json` `auth.cookies` + `routes` — capture recipe:
+  seeded throwaway Redis session (smoke-test recipe) → run `bun run dev:web` →
+  plugin captures `/file/<id>` at 375/768/1280px and writes `apps/web/src/bones/*.bones.json`
+  + `registry.tsx` (commit them!). Without bones, `<Skeleton>` falls back to the
+  `fallback` prop, so runtime is safe pre-capture. `apply: "serve"` only — capture
+  happens on the dev server, never during `vite build`. Grid skeleton bones are
+  deterministic (36px rows) so a hand-authored `.bones.json` is a valid fallback.
 
 ---
 
