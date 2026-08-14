@@ -154,6 +154,7 @@ export interface SheetState {
   selectedCell: SelectedCell | null;
   draft: string;
   qebOpen: boolean;
+  inlineEdit: boolean;
   selectionMode: boolean;
   selectedItems: Set<string>;
   selRows: Set<number>;
@@ -176,6 +177,7 @@ export interface SheetState {
   undo: () => void;
   redo: () => void;
   openQuickEdit: (rowIdx: number, colKey: string) => void;
+  openInlineEdit: (rowIdx: number, colKey: string) => void;
   setDraft: (value: string) => void;
   commitQuickEdit: () => void;
   cancelQuickEdit: () => void;
@@ -249,6 +251,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
   selectedCell: null,
   draft: "",
   qebOpen: false,
+  inlineEdit: false,
   selectionMode: false,
   selectedItems: new Set(),
   selRows: new Set(),
@@ -306,6 +309,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
         selectedCell: null,
         draft: "",
         qebOpen: false,
+      inlineEdit: false,
         selectionMode: false,
         selectedItems: new Set(),
         selRows: new Set(),
@@ -338,6 +342,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
       selectedCell: null,
       draft: "",
       qebOpen: false,
+      inlineEdit: false,
       selectionMode: false,
       selectedItems: new Set(),
       selRows: new Set(),
@@ -530,6 +535,18 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
       selectedCell: { rowIdx, colIdx: colKey, originalVal: row[colKey] ?? "" },
       draft: row[colKey] ?? "",
       qebOpen: true,
+      inlineEdit: false,
+    });
+  },
+
+  openInlineEdit: (rowIdx, colKey) => {
+    const row = get().rows[rowIdx];
+    if (!row) return;
+    set({
+      selectedCell: { rowIdx, colIdx: colKey, originalVal: row[colKey] ?? "" },
+      draft: row[colKey] ?? "",
+      qebOpen: false,
+      inlineEdit: true,
     });
   },
 
@@ -541,11 +558,11 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     const sc = get().selectedCell;
     if (!sc) return;
     get().commitCell(sc.rowIdx, sc.colIdx, get().draft);
-    set({ qebOpen: false, selectedCell: null });
+    set({ qebOpen: false, inlineEdit: false, selectedCell: null });
   },
 
   cancelQuickEdit: () => {
-    set({ qebOpen: false, selectedCell: null });
+    set({ qebOpen: false, inlineEdit: false, selectedCell: null });
   },
 
   moveEdit: (dRow, dCol) => {
@@ -553,6 +570,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     if (!sc) return;
     const rowIdx = sc.rowIdx;
     const colIdx = sc.colIdx;
+    const keepInline = get().inlineEdit;
     get().commitQuickEdit();
     const visible = get().columns.filter((c) => get().visibleCols.has(c.key));
     if (!visible.length) return;
@@ -568,7 +586,8 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
       Math.max(rowIdx + dRow, 0),
       get().rows.length - 1,
     );
-    get().openQuickEdit(newRow, colKey);
+    if (keepInline) get().openInlineEdit(newRow, colKey);
+    else get().openQuickEdit(newRow, colKey);
   },
 
   quickEditPaste: async () => {
@@ -613,6 +632,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     );
     set({
       qebOpen: false,
+      inlineEdit: false,
       selectedCell: null,
       selectionMode: true,
       selectedItems,
@@ -685,6 +705,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     );
     set({
       qebOpen: false,
+      inlineEdit: false,
       selectedCell: null,
       selectionMode: true,
       selectedItems,
@@ -704,6 +725,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
       selectedCell: { rowIdx, colIdx: colKey, originalVal: row[colKey] ?? "" },
       draft: row[colKey] ?? "",
       qebOpen: false,
+      inlineEdit: false,
       selectionMode: false,
       selectedItems: new Set(),
       selRows: new Set(),
@@ -738,6 +760,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     set({
       selectionMode: true,
       qebOpen: false,
+      inlineEdit: false,
       selectedCell: null,
       selectedItems,
       selRows,
@@ -1195,6 +1218,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
         isDirty: true,
         selectedCell: null,
         qebOpen: false,
+      inlineEdit: false,
         ...recomputeMarks(rows, s.crossDups, s.columns),
       });
       toast(`Restored version v${v} (${res.rows?.length ?? 0} rows)`);
@@ -1272,6 +1296,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
         isDirty: true,
         selectedCell: null,
         qebOpen: false,
+      inlineEdit: false,
         ...recomputeMarks(rows, s.crossDups, s.columns),
       });
       get().persist("replace");
@@ -1335,6 +1360,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
       ...recomputeMarks(rows, s.crossDups, s.columns),
       selectedCell: null,
       qebOpen: false,
+      inlineEdit: false,
       selectionMode: false,
       selectedItems: new Set(),
       selRows: new Set(),

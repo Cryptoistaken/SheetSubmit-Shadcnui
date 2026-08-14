@@ -1,5 +1,6 @@
 import { memo, useEffect, useRef, useState } from "react";
 import type {
+  KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
 } from "react";
@@ -186,20 +187,15 @@ export default function SheetGrid() {
           store.selectCellOnly(rowIdx, colKey);
           return;
         }
-        const now = Date.now();
-        const last = lastTap.current;
         if (
-          last &&
-          last.row === rowIdx &&
-          last.col === colKey &&
-          now - last.t < 400
+          store.qebOpen &&
+          store.selectedCell &&
+          (store.selectedCell.rowIdx !== rowIdx ||
+            store.selectedCell.colIdx !== colKey)
         ) {
-          lastTap.current = null;
-          store.openQuickEdit(rowIdx, colKey);
-          return;
+          store.commitQuickEdit();
         }
-        lastTap.current = { row: rowIdx, col: colKey, t: now };
-        store.selectCellOnly(rowIdx, colKey);
+        store.openInlineEdit(rowIdx, colKey);
         return;
       }
       if (store.selectionMode) {
@@ -595,12 +591,18 @@ const GridCell = memo(function GridCell({
   const invalid = useSheetStore((s) => s.invalidCells.has(rowIdx + ":" + colKey));
   const active = useSheetStore(
     (s) =>
-      s.qebOpen &&
+      (s.qebOpen || s.inlineEdit) &&
+      s.selectedCell?.rowIdx === rowIdx &&
+      s.selectedCell.colIdx === colKey,
+  );
+  const inlineActive = useSheetStore(
+    (s) =>
+      s.inlineEdit &&
       s.selectedCell?.rowIdx === rowIdx &&
       s.selectedCell.colIdx === colKey,
   );
   const draft = useSheetStore((s) =>
-    s.qebOpen &&
+    (s.qebOpen || s.inlineEdit) &&
     s.selectedCell?.rowIdx === rowIdx &&
     s.selectedCell.colIdx === colKey
       ? s.draft
@@ -620,8 +622,75 @@ const GridCell = memo(function GridCell({
       data-col={colKey}
     >
       <div className="cell-inner">
-        <span className="cell-text">{draft ?? value}</span>
+        {inlineActive ? (
+          <InlineEditInput />
+        ) : (
+          <span className="cell-text">{draft ?? value}</span>
+        )}
       </div>
     </td>
+  );
+});
+
+const InlineEditInput = memo(function InlineEditInput() {
+  const draft = useSheetStore((s) => s.draft);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLInputElement>) => {
+    const store = useSheetStore.getState();
+    switch (e.key) {
+      case "Enter":
+        e.preventDefault();
+        store.moveEdit(1, 0);
+        break;
+      case "Tab":
+        e.preventDefault();
+        store.moveEdit(0, e.shiftKey ? -1 : 1);
+        break;
+      case "ArrowDown":
+        e.preventDefault();
+        store.moveEdit(1, 0);
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        store.moveEdit(-1, 0);
+        break;
+      case "ArrowRight":
+        e.preventDefault();
+        store.moveEdit(0, 1);
+        break;
+      case "ArrowLeft":
+        e.preventDefault();
+        store.moveEdit(0, -1);
+        break;
+      case "Escape":
+        e.preventDefault();
+        store.cancelQuickEdit();
+        break;
+    }
+  };
+
+  return (
+    <input
+      ref={inputRef}
+      className="cell-edit-input"
+      type="text"
+      aria-label="Cell value"
+      autoComplete="off"
+      autoCorrect="off"
+      spellCheck={false}
+      value={draft}
+      onChange={(e) => useSheetStore.getState().setDraft(e.target.value)}
+      onKeyDown={onKeyDown}
+      onBlur={() => {
+        const store = useSheetStore.getState();
+        if (store.inlineEdit) store.commitQuickEdit();
+      }}
+    />
   );
 });

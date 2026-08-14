@@ -1396,6 +1396,24 @@ table.grid td.dc .cell-text {
     color: var(--text);
 }
 
+table.grid td.dc .cell-edit-input {
+    flex: 1;
+    min-width: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+    outline: none;
+    background: transparent;
+    padding: 0;
+    margin: 0;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--text);
+    text-align: center;
+    caret-color: var(--blue);
+}
+
 td.dc.dup-cell {
     background: var(--yellow-bg) !important;
 }
