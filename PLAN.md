@@ -93,7 +93,7 @@ SheetSubmit-Shadcnui/
 | **2 — Auth + Home** (device login, file grid, FAB, archive, admin; screenshots == old) | ✅ Done | `b67be36` |
 | **3 — Sheet engine** (grid, editing, undo/redo, persist, quick-edit bar; custom table + memo/virtualization; boneyard skeleton loading) | ✅ Done | `6becf75` |
 | **4 — Checks, versions, data ops** (check/auto-check, WA cache, history modal + diff, merge/replace xlsx, download) | ✅ Done | `4cfacf2` |
-| **5 — Bubble (Android)** (`?bubble=1&file=` mode, clipboard automation, 6s refresh, bundle size) | ⬜ | — |
+| **5 — Bubble (Android)** (`?bubble=1&file=` mode, clipboard automation, 6s refresh, bundle size) | ✅ Done | `74e3871` |
 | **6 — Polish & swap** (dark-mode audit, a11y, serve `dist/`, delete old frontend, Android re-verify) | ⬜ | — |
 
 ---
@@ -101,6 +101,47 @@ SheetSubmit-Shadcnui/
 ## 4. Handoff — where we left off & how to resume from any state
 
 ### Last state (as of last update)
+- **Phase 5 (Bubble) complete — commit `74e3871`:**
+  - **Android contract** (verified from `android/` source, untouched): bubble service opens
+    `HOME_URL + "/?bubble=1&file=<id>"` (root path + query). Bridge `window.Android`:
+    main WebView has `isBubbleEnabled/disableBubble/enableBubble/checkForUpdates/whatsNew/
+    openSupport` + clipboard `readClipboard/writeClipboard`; bubble mini WebView has
+    `isApp/readClipboard/writeClipboard`. Both inject a `navigator.clipboard` shim on
+    page-finished, so the WEB app just uses `navigator.clipboard.*` inside Android.
+    The floating bubble's double-tap calls `window.__ss.bubbleSkipNo2FA()`; after each
+    clipboard capture the service calls `window.__ss.bubbleAutomate()`.
+  - **`BubbleMode.tsx`** (lazy-loaded via `React.lazy` — split chunk, ~2.8 kB; main bundle
+    unchanged in structure): `body.bubble-mode` class (ported `css/bubble.css` → app.css:
+    compact 40px topbar, `sheet-view` inset 40px, scaled QEB, 24px rows/26px gutters/8px
+    dots), `openFile(fileId)` after auth, 6s `refreshSheet` interval, clipboard automation
+    (`readClipboard` → empty→6×400ms retries→toast; 15s same-text dedupe; cookie detection
+    `c_user=`+`;`+`=`; key detection normalized ≥10 chars `[A-Z2-7]+`), exposes
+    `window.__ss.bubbleSkipNo2FA` + `bubbleAutomate`. Store gained `bubbleActiveRow` +
+    `bubbleGetActiveRow/bubbleAdvanceActiveRow/bubbleSaveCookie/bubbleSaveKey/
+    bubbleSkipNo2FA` — cookie/key saved with `onCellChange`, `persist("bubble")`,
+    `vibrate`, TOTP auto-copied to clipboard after key save.
+  - **KEY FIX vs old app (A/B-verified):** old `saveKeyToSheet` calls `getActiveRow()`
+    which ONLY returns rows WITHOUT cookies → the 2FA-key path is dead code in the old
+    app (it always toasts "Copy cookie first for account N+1" — reproduced live on the
+    old frontend). New `bubbleSaveKey` targets the ACTIVE row when it has cookies and no
+    key (the row the cookie just landed in) → the advertised cookie→2FA→TOTP flow now
+    works. All old reject paths (dup key/cookie, no cookie first) preserved.
+  - **Bubble picker + gear rows** (`BubblePicker.tsx`, Topbar, Android-only when
+    `window.Android` present): Floating bubble toggle (checked = `isBubbleEnabled()`; on →
+    picker, off → `disableBubble()` + toast), picker modal lists fb_cookie files (+Create
+    new Facebook file), Check for updates / What's new / Report an issue rows → bridge
+    calls. (Bubble picker overlay needs `className="modal-overlay open"` — React can't do
+    the old rAF `.open`-after-append trick.)
+  - **TOTP toast hides the code** ("2FA code copied") — follows the Phase-3 security
+    decision (old app toasted `2FA code copied: <code>`). Clipboard still gets the code.
+  - Verified: web `tsc` + build clean; browser-tested against the smoke env with a fake
+    `window.Android` init-script: bubble mode renders (40px topbar, grid), `__ss` hooks
+    exposed, cookie→key→TOTP flow round-trip on the sheet + clipboard, gear rows render,
+    picker opens with file list. **On-device APK re-verify is the user's** (Phase 6).
+  - Smoke env still running: server :3999 (+ temp `.env`), Redis `ss-smoke-redis` (:6390)
+    — session `smoke`, file `smoke` now has extra test rows (cookies 777777/888888/
+    999999 + key JBSWY3... on row 5). The A/B parity server (:3998, STATIC_ROOT=old repo)
+    was killed after the test.
 - **Phase 4 (Checks, versions, data ops) complete — commit `4cfacf2`** (plus `52bcf11`
   chore: removed unused Vite/shadcn scaffold `favicon.svg`/`icons.svg`):
   - **WA check flow wired** (old `runWaChecks`): `sheetStore.runWaChecks()` — fires after
@@ -447,6 +488,15 @@ cd /b/Studio/Tools/SheetSubmit && bun run   # starts old Express server
   cookie `session=smoke` for `localhost`. Stop later: kill PID from
   `Get-CimInstance Win32_Process | where CommandLine -match "server/src/index.ts"`,
   `docker rm -f ss-smoke-redis`, delete `.env`.
+- **Bubble mode entry contract:** `/?bubble=1&file=<id>` ONLY activates when
+  `window.Android` exists (the Android WebView bridge). Desktop browsers will never see
+  bubble mode — good for testing the normal app. To test bubble locally, inject a fake
+  `window.Android` via Playwright `addInitScript` BEFORE navigation (see Phase-5 recap).
+  `BubbleMode` is wrapped in `<MemoryRouter>` because `SheetToolbar`→`VersionHistory`
+  uses `useNavigate` (no browser router in bubble mode).
+- **`window.__ss` globals:** BubbleMode exposes `window.__ss.bubbleSkipNo2FA` and
+  `window.__ss.bubbleAutomate` (Android bridge contract) and cleans them up on unmount.
+  Do not rename — FloatingBubbleService.java injects these exact names.
 
 ---
 
