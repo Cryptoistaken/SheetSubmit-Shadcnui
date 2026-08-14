@@ -35,6 +35,9 @@ export default function AdminView() {
 
   useEffect(() => {
     loadList();
+    return () => {
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+    };
   }, [loadList]);
 
   const showList = useCallback(() => {

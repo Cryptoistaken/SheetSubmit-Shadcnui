@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type {
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
@@ -35,7 +35,10 @@ export default function SheetGrid() {
   const selectionMode = useSheetStore((s) => s.selectionMode);
   const selCols = useSheetStore((s) => s.selCols);
 
-  const displayCols = columns.filter((c) => visibleCols.has(c.key));
+  const displayCols = useMemo(
+    () => columns.filter((c) => visibleCols.has(c.key)),
+    [columns, visibleCols],
+  );
 
   const [logPopup, setLogPopup] = useState<LogPopupState | null>(null);
   const popupRef = useRef<HTMLDivElement | null>(null);

@@ -380,7 +380,19 @@ public class FloatingBubbleService extends Service {
     }
 
     private void ensureMiniWebView() {
-        if (miniWebView != null) return;
+        if (miniWebView != null) {
+            try {
+                String url = miniWebView.getUrl();
+                // hidePanel() unloads about:blank — a reused WebView would
+                // show a blank page on the next open, so recreate it.
+                if (url != null && !url.equals("about:blank")) return;
+                try { miniWebView.destroy(); } catch (Exception ignored) {}
+                miniWebView = null;
+            } catch (Exception e) {
+                try { miniWebView.destroy(); } catch (Exception ignored) {}
+                miniWebView = null;
+            }
+        }
         try {
             miniWebView = new WebView(this);
             miniWebView.setBackgroundColor(0x00000000);
@@ -453,6 +465,7 @@ public class FloatingBubbleService extends Service {
 
     private void hidePanel() {
         if (miniWebView != null) {
+            try { miniWebView.loadUrl("about:blank"); } catch (Exception ignored) {}
             try { miniWebView.onPause(); } catch (Exception ignored) {}
         }
         if (panelRoot != null) {

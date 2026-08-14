@@ -41,6 +41,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     return () => setToastFn(null);
   }, [showToast]);
 
+  useEffect(() => {
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, []);
+
   return (
     <ToastContext.Provider value={{ showToast }}>
       {children}

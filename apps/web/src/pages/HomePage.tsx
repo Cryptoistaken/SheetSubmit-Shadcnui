@@ -15,6 +15,19 @@ import { downloadXlsx, genId, hydrateWaCache, importXlsx, todayStr } from "@/lib
 
 type Tab = "files" | "archive" | "admin";
 
+interface AndroidBridge {
+  getBubbleFile?: () => string;
+  disableBubble?: () => void;
+}
+
+function getAndroid(): AndroidBridge | null {
+  try {
+    return (window as unknown as { Android?: AndroidBridge }).Android ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export default function HomePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -55,6 +68,17 @@ export default function HomePage() {
   const deleteFile = async (f: SheetFile) => {
     const ok = await confirm("Move this file to archive?", "Archive");
     if (!ok) return;
+    const android = getAndroid();
+    if (android) {
+      try {
+        if (android.getBubbleFile?.() === f.id) {
+          android.disableBubble?.();
+          showToast("Floating bubble disabled - file archived");
+        }
+      } catch {
+        // bridge may be gone
+      }
+    }
     await api.deleteFile(f.id);
     loadFiles();
     showToast("File archived");

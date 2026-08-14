@@ -9,10 +9,10 @@ import {
   type WaCacheEntry,
 } from "@/lib/types";
 import { getFileBehavior } from "@/features/filetypes";
-import { getCachedTOTP } from "@/features/filetypes/totp";
 import { toast } from "@/lib/toast";
 import { vibrate } from "@/lib/utils";
 import { IS_DESKTOP } from "@/lib/device";
+import { getCachedTOTP } from "@/features/filetypes/totp";
 
 export interface CellDelta {
   rowIdx: number;
@@ -413,6 +413,21 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     });
     get().maybeAutoCheck(rowIdx, colKey);
     get().persist();
+    if (
+      colKey === "twofakey" &&
+      value &&
+      !s.isDesktop &&
+      /^[A-Z2-7]{10,}$/.test(value.replace(/[\s\-]/g, "").toUpperCase())
+    ) {
+      void getCachedTOTP(value)
+        .then((r) => {
+          if (!r) return;
+          if (get().fileId !== s.fileId) return;
+          navigator.clipboard.writeText(r.code).catch(() => {});
+          toast("TOTP copied");
+        })
+        .catch(() => {});
+    }
   },
 
   persist: (action) => {
@@ -456,6 +471,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     try {
       await api.persist(s.fileId, payload);
       set({ isDirty: false });
+      trimMemoryRows();
     } catch {
       // swallow — old app is fire-and-forget
     }
@@ -1078,6 +1094,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
           });
         }
       });
+      if (apiLogs.length > 200) apiLogs.splice(0, apiLogs.length - 200);
       set({
         rows,
         apiLogs,
@@ -1525,11 +1542,6 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
       ...recomputeMarks(rows, s.crossDups, s.columns),
     });
     get().persist("bubble");
-    const totp = await getCachedTOTP(key);
-    if (totp) {
-      bubbleWriteClipboardText(totp.code);
-      toast("2FA copied");
-    }
     if (complete) get().bubbleAdvanceActiveRow();
   },
 
@@ -1564,17 +1576,23 @@ async function refreshCrossDups(fileId: string | null) {
 
 // ── Bubble (Android mini-window) helpers ──
 
-function bubbleWriteClipboardText(t: string) {
-  try {
-    const android = (window as unknown as { Android?: { writeClipboard?: (v: string) => void } }).Android;
-    if (android?.writeClipboard) {
-      android.writeClipboard(String(t));
-      return;
-    }
-  } catch {
-    // fall through to the web clipboard API (shimmed by the Android bridge)
-  }
-  navigator.clipboard.writeText(t).catch(() => {});
+function trimMemoryRows() {
+  const s = useSheetStore.getState();
+  if (!s.fileId || !s.file) return;
+  const columns = FILE_TYPE_DEFS[s.file.type].columns;
+  useSheetStore.setState((prev) => {
+    if (prev.isDirty) return {};
+    let lastData = -1;
+    prev.rows.forEach((row, i) => {
+      if (columns.some((c) => row[c.key])) lastData = i;
+    });
+    const keep = Math.min(prev.rows.length, Math.max(lastData + 51, 100));
+    if (prev.rows.length <= keep) return {};
+    const tail = prev.rows.slice(keep);
+    const tailEmpty = tail.every((r) => columns.every((c) => !r[c.key]));
+    if (!tailEmpty) return {};
+    return { rows: prev.rows.slice(0, keep) };
+  });
 }
 
 /** Normalize a 2FA key: strip spaces/dashes, uppercase (old normalizeKey). */
@@ -1593,6 +1611,7 @@ function applyCells(
   const newInvalid = new Set(s.invalidCells);
   const undoEntries: UndoEntry[] = [];
   let changed = false;
+  let lastKey: string | null = null;
   for (const cell of cells) {
     const row = rows[cell.rowIdx];
     if (!row) continue;
@@ -1605,6 +1624,13 @@ function applyCells(
       prevVal,
     });
     changed = true;
+    if (
+      cell.colKey === "twofakey" &&
+      cell.value &&
+      /^[A-Z2-7]{10,}$/.test(cell.value.replace(/[\s\-]/g, "").toUpperCase())
+    ) {
+      lastKey = cell.value;
+    }
     if (behavior?.onCellChange) {
       behavior.onCellChange({
         rows,
@@ -1629,4 +1655,14 @@ function applyCells(
   });
   useSheetStore.getState().persist();
   toast(toastMsg);
+  if (lastKey && !s.isDesktop) {
+    void getCachedTOTP(lastKey)
+      .then((r) => {
+        if (!r) return;
+        if (useSheetStore.getState().fileId !== s.fileId) return;
+        navigator.clipboard.writeText(r.code).catch(() => {});
+        toast("TOTP copied");
+      })
+      .catch(() => {});
+  }
 }

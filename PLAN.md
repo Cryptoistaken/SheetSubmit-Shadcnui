@@ -116,7 +116,39 @@ SheetSubmit-Shadcnui/
 ## 4. Handoff — where we left off & how to resume from any state
 
 ### Last state (as of last update)
+- **Web mobile: paste 2FA key → auto TOTP + copy (no commit yet, requested):** in
+  `sheetStore.commitCell` and `applyCells`, committing a valid base32 `twofakey` value
+  (`[A-Z2-7]{10,}`) on a TOUCH device (`!s.isDesktop`) now generates the TOTP and
+  writes it to the clipboard (toast "TOTP copied", code hidden). Single-cell QEB paste
+  and multi-cell paste both covered. Bubble path (`bubbleSaveKey`) stays manual (dot
+  double-tap only) per the earlier request.
+- **RAM/leak fixes + no pre-gen 2FA (no commit yet):** web — `versionCache` capped
+  (3 files, 50 versions/file, FIFO); `apiLogs` capped 200 in `runCheck`;
+  `flushPersist` trims in-memory `rows` to `keepCount` (only when not dirty + tail
+  all-empty; mirrors server trim); `SheetGrid.displayCols` now `useMemo` (fixes
+  `GridRow` memo bust); unmount cleanup for FileCard hold timer, AdminView search
+  debounce, toast timer. Android — `FloatingBubbleService` restored old
+  unload/recreate: `hidePanel` loads `about:blank` + `onPause`, `ensureMiniWebView`
+  destroys+recreates when blank (kills the 24/7 resident bubble page); `MainActivity`
+  detaches WebView from view tree before `destroy()`, adds `destroyed` flag to abort
+  update-download UI on destroy, read timeout 300s→60s. **2FA behavior change
+  (requested):** `bubbleSaveKey` no longer auto-generates/copies a TOTP after a key
+  save — TOTP is generated ONLY on dot double-tap (`onDotDoubleTap`); removed
+  `bubbleWriteClipboardText` + unused `getCachedTOTP` import from sheetStore.
+  Verified: web `tsc -b` + `vite build` clean; Android `:app:compileDebugJavaWithJavac`
+  compiles. Undo `RowsDelta` full-sheet deep copies kept (inherent to undo; stacks
+  capped 100).
+- **Bubble file-delete + restart parity port (no commit yet):** `HomePage.deleteFile` now
+  checks `window.Android.getBubbleFile() === f.id` before `api.deleteFile` → `disableBubble()`
+  + toast "Floating bubble disabled - file archived" (port of old `home.js:240-248`). Batch
+  delete + archive permanent delete intentionally skip the check (old app parity). Restart
+  file-still-exists check was ALREADY present and untouched: `MainActivity` auto-starts the
+  bubble service when `bubble_file` pref exists (line ~351), `FloatingBubbleService.onCreate`
+  stops if the pref is empty, and `BubbleMode.openFile` shows "Failed to load bubble file"
+  on 404 / "Bubble file must be a Facebook file" toast on wrong type — matching old
+  `bubble.js` boot. Verified: `tsc -b` + `vite build` clean.
 - **Post-Phase-6 user-feature batch (commit `b6cdf0e`):**
+
   - **Desktop INLINE cell editing (follow-up, commit `32f0059`):** single click on a cell starts editing DIRECTLY inside the cell (`store.openInlineEdit` → `<input class="cell-edit-input">` rendered in the `td.dc`; auto-focus + select, `onBlur` commits). The QEB pill is touch-only now — double-click no longer opens it on desktop. Enter/Tab/arrows/Escape behave like the pill editor; `moveEdit` keeps inline mode (`keepInline`). Store gained `inlineEdit` boolean (reset everywhere `qebOpen` resets). **Gotcha:** `lib/device.ts` touch detection was changed from `maxTouchPoints > 0` (Windows touchscreen laptops misdetect as touch) to primary-pointer signals: `matchMedia("(pointer: coarse)")` OR (`ontouchstart` AND NOT `pointer: fine`).  - **WA check dots update INSTANTLY per row** — `runWaChecks` now pushes each individual live-check result to the store as it resolves (immutable row replace + `set`), so the dot flips green the moment that row's check finishes; the final `persist()` still happens once at the end. Cache hits still apply up-front in one set.
   - **Check no longer creates undo/redo entries or version snapshots** — `runCheck` dropped its `{type:"rows", prevRows}` undo push AND its `persist("check")` action (now plain `persist()`), per explicit user request. Statuses still save; nothing to revert.
   - **Upload on an EMPTY file is now undoable** — `applyUpload` (replace AND append) pushes a rows-undo snapshot when `lastDataIdx === -1` (no data rows) instead of wiping undo/redo; non-empty files keep the old clear-both-stacks parity.

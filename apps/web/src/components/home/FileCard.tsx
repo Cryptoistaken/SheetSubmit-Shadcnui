@@ -1,5 +1,5 @@
 import { Download, Pencil, Trash2 } from "lucide-react";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 
 import { FILE_TYPE_DEFS } from "@/lib/types";
 import type { SheetFile } from "@/lib/types";
@@ -39,6 +39,10 @@ export default function FileCard({
       holdTimer.current = null;
     }
   };
+
+  useEffect(() => {
+    return () => clearHold();
+  }, []);
 
   const onPointerDown = () => {
     heldRef.current = false;

@@ -56,11 +56,12 @@ public class MainActivity extends Activity {
     private static final int REQ_UNKNOWN_APP_SOURCES = 2004;
     private static final int UPDATE_RETRIES = 2;
     private static final int DOWNLOAD_CONNECT_TIMEOUT = 30000;
-    private static final int DOWNLOAD_READ_TIMEOUT = 300000;
+    private static final int DOWNLOAD_READ_TIMEOUT = 60000;
 
     private WebView webView;
     private String did;
     private boolean sessionApplied = false;
+    private volatile boolean destroyed = false;
     private final Handler pollHandler = new Handler(Looper.getMainLooper());
     private ValueCallback<Uri[]> filePathCallback;
     private AlertDialog progressDialog;
@@ -571,6 +572,7 @@ public class MainActivity extends Activity {
                                     runOnUiThread(new Runnable() {
                                         @Override
                                         public void run() {
+                                            if (destroyed) return;
                                             updateProgress(pct, dl, totalBytes);
                                         }
                                     });
@@ -588,6 +590,7 @@ public class MainActivity extends Activity {
                         runOnUiThread(new Runnable() {
                             @Override
                             public void run() {
+                                if (destroyed) return;
                                 dismissProgress();
                                 openInstaller(apk);
                             }
@@ -595,6 +598,7 @@ public class MainActivity extends Activity {
                         return;
                     } catch (Exception e) {
                         last = e;
+                        if (destroyed) return;
                         if (fos != null) {
                             try { fos.close(); } catch (Exception ignored) {}
                         }
@@ -615,6 +619,7 @@ public class MainActivity extends Activity {
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
+                        if (destroyed) return;
                         dismissProgress();
                         Toast.makeText(MainActivity.this, err, Toast.LENGTH_LONG).show();
                     }
@@ -748,8 +753,17 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        destroyed = true;
         pollHandler.removeCallbacks(pollRunnable);
-        webView.destroy();
+        dismissProgress();
+        if (webView != null) {
+            try {
+                if (webView.getParent() != null) {
+                    ((ViewGroup) webView.getParent()).removeView(webView);
+                }
+            } catch (Exception ignored) {}
+            webView.destroy();
+        }
         super.onDestroy();
     }
 }
