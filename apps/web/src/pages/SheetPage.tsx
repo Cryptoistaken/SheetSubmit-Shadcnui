@@ -52,16 +52,20 @@ function GridFixture() {
 }
 
 export default function SheetPage() {
-  const { id } = useParams();
+  const params = useParams();
   const navigate = useNavigate();
   const status = useSheetStore((s) => s.status);
+  const fileId = params.fileId ?? params.id;
+  const ownerId = params.userId;
 
   usePersist();
 
   useEffect(() => {
-    if (id) void useSheetStore.getState().openFile(id);
+    if (!fileId) return;
+    if (ownerId) void useSheetStore.getState().openFileAdmin(fileId, ownerId);
+    else void useSheetStore.getState().openFile(fileId);
     return () => useSheetStore.getState().closeFile();
-  }, [id]);
+  }, [fileId, ownerId]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -104,7 +108,10 @@ export default function SheetPage() {
       <div className="home-pane">
         <div className="empty-state">
           <div className="empty-state-title">Could not open file</div>
-          <button className="btn btn-ghost" onClick={() => navigate("/")}>
+          <button
+            className="btn btn-ghost"
+            onClick={() => navigate(ownerId ? `/admin/user/${ownerId}` : "/")}
+          >
             Back
           </button>
         </div>

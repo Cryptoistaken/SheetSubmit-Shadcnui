@@ -1,9 +1,8 @@
 // Auth routes — ported from the old server (API contract unchanged).
 import { Router } from "express";
 import { TG_BOT_TOKEN as BOT_TOKEN } from "../config/env";
-import { generateToken } from "../lib/ids";
-import { delKey, getJSON, redis, setJSON, setJSONex } from "../services/redis";
-import { tg } from "../services/telegram";
+import { delKey, getJSON } from "../services/redis";
+import { completeTelegramLogin, tg } from "../services/telegram";
 import { getSessionId, invalidateSession, isAdmin } from "../middleware/auth";
 
 export const authRouter = Router();
@@ -25,76 +24,22 @@ authRouter.get("/telegram", async (req, res) => {
   }
 
   console.log("[Auth] login for chatId=" + loginData.chatId);
-  let userInfo: { id: string; firstName: string; lastName: string; username: string; fileId: string | null } | null = null;
-  try {
-    const chatRes = await tg("getChat", { chat_id: loginData.chatId });
-    if (chatRes.ok && chatRes.result) {
-      userInfo = {
-        id: loginData.chatId,
-        firstName: chatRes.result.first_name || "",
-        lastName: chatRes.result.last_name || "",
-        username: chatRes.result.username || "",
-        fileId: null,
-      };
-      try {
-        const photosRes = await tg("getUserProfilePhotos", { user_id: loginData.chatId, limit: 1 });
-        if (photosRes.ok && photosRes.result && photosRes.result.photos.length > 0) {
-          userInfo.fileId = photosRes.result.photos[0][photosRes.result.photos[0].length - 1].file_id;
-        }
-      } catch {
-        // ignore photo lookup failure
-      }
+  const result = await completeTelegramLogin(loginData.chatId, loginData.did);
+  if (!result.ok) {
+    if (result.reason === "banned") {
+      console.log("[Auth] blocked login for banned user id=" + loginData.chatId);
+      res.status(403).json({ error: "account banned" });
+    } else {
+      console.log("[Auth] failed to get user info");
+      res.status(500).send("Failed to get user info");
     }
-  } catch {
-    // ignore getChat failure
-  }
-
-  if (!userInfo) {
-    console.log("[Auth] failed to get user info");
-    res.status(500).send("Failed to get user info");
     return;
   }
 
-  console.log("[Auth] user=" + (userInfo.username || userInfo.firstName) + " id=" + userInfo.id);
-
-  const banned = await getJSON("ban:" + userInfo.id);
-  if (banned) {
-    console.log("[Auth] blocked login for banned user id=" + userInfo.id);
-    res.status(403).json({ error: "account banned" });
-    return;
-  }
-
-  const existing = (await getJSON<Record<string, unknown>>("user:" + userInfo.id)) || {};
-  const merged: Record<string, unknown> = {
-    id: userInfo.id,
-    firstName: userInfo.firstName,
-    lastName: userInfo.lastName,
-    username: userInfo.username,
-    fileId: userInfo.fileId || existing.fileId || null,
-    lastLogin: Date.now(),
-  };
-  await setJSON("user:" + userInfo.id, merged);
-  await redis.sadd("ss:userIds", String(userInfo.id));
-
-  const sessionId = generateToken();
-  await setJSONex("session:" + sessionId, { userId: userInfo.id }, 2592000000);
   await delKey("login:" + token);
 
-  if (loginData.did && /^[A-Za-z0-9-]{8,64}$/.test(loginData.did)) {
-    await setJSONex("device:" + loginData.did, { sessionId }, 3600000);
-    console.log("[Auth] session bound to device " + loginData.did.slice(0, 8) + "...");
-  }
-
-  res.setHeader("Set-Cookie", "session=" + sessionId + "; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000");
+  res.setHeader("Set-Cookie", "session=" + result.sessionId + "; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000");
   console.log("[Auth] session created, redirecting");
-
-  void tg("sendMessage", {
-    chat_id: loginData.chatId,
-    text:
-      "<b>Login Successful</b>\n\nHey @" + (userInfo.username || userInfo.firstName) +
-      ", you are signed in to SheetSubmit.\n\nIf this was not you, contact the admin immediately.",
-    parse_mode: "HTML",
-  });
 
   res.redirect("/");
 });

@@ -1,5 +1,11 @@
 import { lazy, Suspense, useMemo } from "react";
-import { Outlet, RouterProvider, createBrowserRouter } from "react-router";
+import {
+  Navigate,
+  Outlet,
+  RouterProvider,
+  createBrowserRouter,
+  useParams,
+} from "react-router";
 
 import LoginScreen from "@/components/auth/LoginScreen";
 import Topbar from "@/components/layout/Topbar";
@@ -7,6 +13,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/lib/theme";
 import HomePage from "@/pages/HomePage";
 import SheetPage from "@/pages/SheetPage";
+import VersionDiffPage from "@/pages/VersionDiffPage";
 
 const BubbleMode = lazy(() => import("@/components/bubble/BubbleMode"));
 
@@ -32,13 +39,29 @@ function Layout() {
   );
 }
 
+// Fallbacks for hand-typed bare admin URLs with a missing id segment — send the
+// user back to the nearest real state instead of a blank screen.
+function AdminFileFallback() {
+  const { userId } = useParams();
+  return <Navigate to={userId ? `/admin/user/${userId}` : "/admin"} replace />;
+}
+
 const router = createBrowserRouter([
   {
     path: "/",
     element: <Layout />,
     children: [
       { index: true, element: <HomePage /> },
+      { path: "files", element: <HomePage /> },
+      { path: "archive", element: <HomePage /> },
+      { path: "admin", element: <HomePage /> },
+      { path: "admin/user", element: <Navigate to="/admin" replace /> },
+      { path: "admin/user/:userId", element: <HomePage /> },
+      { path: "admin/user/:userId/file", element: <AdminFileFallback /> },
+      { path: "admin/user/:userId/file/:fileId", element: <SheetPage /> },
+      { path: "admin/user/:userId/file/:fileId/version/:v", element: <VersionDiffPage /> },
       { path: "file/:id", element: <SheetPage /> },
+      { path: "file/:id/version/:v", element: <VersionDiffPage /> },
     ],
   },
 ]);

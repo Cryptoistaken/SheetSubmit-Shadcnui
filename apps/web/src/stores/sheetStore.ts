@@ -161,8 +161,11 @@ export interface SheetState {
   crossDups: Record<string, unknown[]>;
   checkRunning: boolean;
   isDesktop: boolean;
+  adminMode: boolean;
+  adminOwnerId: string | null;
 
   openFile: (id: string) => Promise<void>;
+  openFileAdmin: (id: string, ownerId: string) => Promise<void>;
   closeFile: () => void;
   refreshSheet: () => Promise<void>;
   commitCell: (rowIdx: number, colKey: string, value: string) => void;
@@ -259,10 +262,12 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
   checkRunning: false,
   isDesktop: IS_DESKTOP,
   bubbleActiveRow: -1,
+  adminMode: false,
+  adminOwnerId: null,
 
   openFile: async (id) => {
     const seq = ++openSeq;
-    set({ status: "loading" });
+    set({ status: "loading", adminMode: false, adminOwnerId: null });
     try {
       const [f, rowsRes, logsRes, undoData] = await Promise.all([
         api.getFile(id),
@@ -348,14 +353,72 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
       hasDuplicates: false,
       crossDups: {},
       checkRunning: false,
+      adminMode: false,
+      adminOwnerId: null,
     });
+  },
+
+  openFileAdmin: async (id, ownerId) => {
+    const seq = ++openSeq;
+    set({ status: "loading", adminMode: true, adminOwnerId: ownerId });
+    try {
+      const [f, rowsRes, logsRes, undoData] = await Promise.all([
+        api.adminFile(id),
+        api.adminFileRows(id),
+        api.adminFileLogs(id),
+        api.adminUndo(id),
+      ]);
+      if (!f?.id) throw new Error("File not found");
+      if (seq !== openSeq) return;
+      const columns = FILE_TYPE_DEFS[f.type].columns;
+      let visibleCols = new Set<string>(columns.map((c) => c.key));
+      try {
+        const saved = localStorage.getItem(`ss_cols_${id}`);
+        if (saved) visibleCols = new Set<string>(JSON.parse(saved) as string[]);
+      } catch {
+        // ignore malformed saved columns
+      }
+      const rows: Row[] = [...(rowsRes ?? [])];
+      while (rows.length < 100) rows.push(makeEmptyRow(columns));
+      const undoStack = (undoData?.undo ?? []) as UndoEntry[];
+      const redoStack = (undoData?.redo ?? []) as UndoEntry[];
+      const apiLogs = logsRes ?? [];
+      set({
+        status: "ready",
+        fileId: id,
+        file: f,
+        rows,
+        columns,
+        visibleCols,
+        undoStack,
+        redoStack,
+        apiLogs,
+        isDirty: false,
+        selectedCell: null,
+        draft: "",
+        qebOpen: false,
+        inlineEdit: false,
+        selectionMode: false,
+        selectedItems: new Set(),
+        selRows: new Set(),
+        selCols: new Set(),
+        invalidCells: new Set(),
+        crossDups: {},
+        checkRunning: false,
+        ...recomputeMarks(rows, {}, columns),
+      });
+    } catch {
+      set({ status: "error" });
+    }
   },
 
   refreshSheet: async () => {
     const fileId = get().fileId;
     if (!fileId) return;
     try {
-      const rowsRes = await api.getRows(fileId);
+      const rowsRes = get().adminMode
+        ? await api.adminFileRows(fileId)
+        : await api.getRows(fileId);
       if (fileId !== get().fileId) return;
       const columns = get().columns;
       const rows: Row[] = [...(rowsRes ?? [])];
@@ -460,6 +523,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
       redo: UndoEntry[];
       dataCount: number;
       action?: string;
+      userId?: string;
     } = {
       rows: trimmed,
       logs: s.apiLogs,
@@ -469,7 +533,12 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     };
     if (action) payload.action = action;
     try {
-      await api.persist(s.fileId, payload);
+      if (s.adminMode) {
+        payload.userId = s.adminOwnerId ?? undefined;
+        await api.adminPersist(s.fileId, payload);
+      } else {
+        await api.persist(s.fileId, payload);
+      }
       set({ isDirty: false });
       trimMemoryRows();
     } catch {
@@ -1247,7 +1316,9 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     const s = get();
     if (!s.fileId) return false;
     try {
-      const res = await api.restoreVersion(s.fileId, v);
+      const res = s.adminMode
+        ? await api.adminRestoreVersion(s.fileId, v)
+        : await api.restoreVersion(s.fileId, v);
       if (!res?.ok) {
         toast("Restore failed");
         return false;
@@ -1323,20 +1394,14 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     s.rows.forEach((row, idx) => {
       if (s.columns.some((c) => row[c.key])) lastDataIdx = idx;
     });
-    const isEmpty = lastDataIdx === -1;
+    const undoStack: UndoEntry[] = [
+      ...s.undoStack,
+      { type: "rows", prevRows: s.rows.map((r) => ({ ...r })) },
+    ];
+    if (undoStack.length > 100) undoStack.shift();
     if (mode === "replace") {
       const rows = [...incoming];
       while (rows.length < 100) rows.push(makeEmptyRow(s.columns));
-      let undoStack: UndoEntry[];
-      if (isEmpty) {
-        undoStack = [
-          ...s.undoStack,
-          { type: "rows", prevRows: s.rows.map((r) => ({ ...r })) },
-        ];
-        if (undoStack.length > 100) undoStack.shift();
-      } else {
-        undoStack = [];
-      }
       set({
         rows,
         undoStack,
@@ -1352,16 +1417,6 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     } else {
       const rows = s.rows.slice();
       rows.splice(lastDataIdx + 1, 0, ...incoming);
-      let undoStack: UndoEntry[];
-      if (isEmpty) {
-        undoStack = [
-          ...s.undoStack,
-          { type: "rows", prevRows: s.rows.map((r) => ({ ...r })) },
-        ];
-        if (undoStack.length > 100) undoStack.shift();
-      } else {
-        undoStack = [];
-      }
       set({
         rows,
         undoStack,

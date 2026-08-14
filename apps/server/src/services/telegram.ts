@@ -1,7 +1,7 @@
 // Telegram bot — ported from the old server (webhook on public URL, long-poll fallback).
 import { APP_URL, TG_BOT_TOKEN } from "../config/env";
 import { generateToken } from "../lib/ids";
-import { delKey, getJSON, setJSON, setJSONex } from "./redis";
+import { delKey, getJSON, redis, setJSON, setJSONex } from "./redis";
 
 const TG_API = "https://api.telegram.org/bot" + TG_BOT_TOKEN;
 
@@ -45,6 +45,80 @@ interface TgUpdate {
   };
 }
 
+export type TelegramLoginResult =
+  | { ok: true; sessionId: string }
+  | { ok: false; reason: "banned" | "info" };
+
+// Complete a Telegram login server-side: fetch chat info, upsert the user,
+// create a session, and (for Android) bind it to the device key the app polls.
+// Shared by the /api/auth/telegram web callback and the bot's direct device login.
+export async function completeTelegramLogin(
+  chatId: string | number,
+  did?: string,
+): Promise<TelegramLoginResult> {
+  const userId = String(chatId);
+  const banned = await getJSON("ban:" + userId);
+  if (banned) return { ok: false, reason: "banned" };
+
+  let userInfo: { id: string; firstName: string; lastName: string; username: string; fileId: string | null } | null = null;
+  try {
+    const chatRes = await tg("getChat", { chat_id: userId });
+    if (chatRes.ok && chatRes.result) {
+      userInfo = {
+        id: userId,
+        firstName: chatRes.result.first_name || "",
+        lastName: chatRes.result.last_name || "",
+        username: chatRes.result.username || "",
+        fileId: null,
+      };
+      try {
+        const photosRes = await tg("getUserProfilePhotos", { user_id: userId, limit: 1 });
+        if (photosRes.ok && photosRes.result && photosRes.result.photos.length > 0) {
+          userInfo.fileId = photosRes.result.photos[0][photosRes.result.photos[0].length - 1].file_id;
+        }
+      } catch {
+        // ignore photo lookup failure
+      }
+    }
+  } catch {
+    // ignore getChat failure
+  }
+
+  if (!userInfo) return { ok: false, reason: "info" };
+
+  console.log("[Auth] user=" + (userInfo.username || userInfo.firstName) + " id=" + userInfo.id);
+
+  const existing = (await getJSON<Record<string, unknown>>("user:" + userInfo.id)) || {};
+  const merged: Record<string, unknown> = {
+    id: userInfo.id,
+    firstName: userInfo.firstName,
+    lastName: userInfo.lastName,
+    username: userInfo.username,
+    fileId: userInfo.fileId || existing.fileId || null,
+    lastLogin: Date.now(),
+  };
+  await setJSON("user:" + userInfo.id, merged);
+  await redis.sadd("ss:userIds", String(userInfo.id));
+
+  const sessionId = generateToken();
+  await setJSONex("session:" + sessionId, { userId: userInfo.id }, 2592000000);
+
+  if (did && /^[A-Za-z0-9-]{8,64}$/.test(did)) {
+    await setJSONex("device:" + did, { sessionId }, 3600000);
+    console.log("[Auth] session bound to device " + did.slice(0, 8) + "...");
+  }
+
+  void tg("sendMessage", {
+    chat_id: chatId,
+    text:
+      "<b>Login Successful</b>\n\nHey @" + (userInfo.username || userInfo.firstName) +
+      ", you are signed in to SheetSubmit.\n\nIf this was not you, contact the admin immediately.",
+    parse_mode: "HTML",
+  });
+
+  return { ok: true, sessionId };
+}
+
 export async function handleBotUpdate(update: TgUpdate): Promise<void> {
   console.log(
     "[Bot] update id=" + update.update_id +
@@ -76,15 +150,26 @@ export async function handleBotUpdate(update: TgUpdate): Promise<void> {
   if (update.callback_query) {
     const cb = update.callback_query;
     if (cb.data === "login" && cb.message) {
+      const chatId = cb.message.chat.id;
+      // Device login (Android): complete the session right here — no "Open URL"
+      // hop. The app polls /api/auth/device?token=<did> to pick up the session.
+      const didChat = await getJSON<{ did: string }>("didchat:" + chatId);
+      if (didChat && didChat.did) {
+        await delKey("didchat:" + chatId);
+        const result = await completeTelegramLogin(chatId, didChat.did);
+        await tg("editMessageText", {
+          chat_id: chatId,
+          message_id: cb.message.message_id,
+          text: result.ok
+            ? "Login successful! You can close this chat and return to the app."
+            : "Login failed. Please try again.",
+        });
+        await tg("answerCallbackQuery", { callback_query_id: cb.id });
+        return;
+      }
       const token = generateToken();
       let url = APP_URL + "/api/auth/telegram?token=" + token;
       const loginReq: Record<string, unknown> = { chatId: cb.message.chat.id };
-      const didChat = await getJSON<{ did: string }>("didchat:" + cb.message.chat.id);
-      if (didChat && didChat.did) {
-        loginReq.did = didChat.did;
-        url += "&device=" + didChat.did;
-        await delKey("didchat:" + cb.message.chat.id);
-      }
       await setJSONex("login:" + token, loginReq, 900000);
       await tg("editMessageText", {
         chat_id: cb.message.chat.id,

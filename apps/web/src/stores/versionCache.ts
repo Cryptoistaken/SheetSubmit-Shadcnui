@@ -26,7 +26,11 @@ export function getCachedVersionRows(fileId: string, v: number): VersionRows | n
 }
 
 /** Per-file cached version row load. Never rejects; errors degrade to empty. */
-export async function getVersionRows(fileId: string, v: number): Promise<VersionRows> {
+export async function getVersionRows(
+  fileId: string,
+  v: number,
+  admin = false,
+): Promise<VersionRows> {
   let byFile = cache.get(fileId);
   if (!byFile) {
     byFile = new Map();
@@ -35,7 +39,9 @@ export async function getVersionRows(fileId: string, v: number): Promise<Version
   const hit = byFile.get(v);
   if (hit) return hit;
   try {
-    const data = await api.getVersion(fileId, v);
+    const data = admin
+      ? await api.adminGetVersion(fileId, v)
+      : await api.getVersion(fileId, v);
     const rows = (data?.rows ?? []) as Row[];
     const keys = new Set<string>();
     rows.forEach((r) => {

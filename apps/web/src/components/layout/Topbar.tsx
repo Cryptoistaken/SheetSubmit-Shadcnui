@@ -63,7 +63,9 @@ export default function Topbar() {
     return () => window.removeEventListener("load", onLoad);
   }, []);
 
-  const isFilePage = location.pathname.startsWith("/file/");
+  const isFilePage =
+    location.pathname.startsWith("/file/") ||
+    /\/admin\/user\/[^/]+\/file\/[^/]+/.test(location.pathname);
   const hideHome = isFilePage ? { display: "none" as const } : undefined;
 
   // Close gear panel when leaving the home screen.
@@ -143,7 +145,9 @@ export default function Topbar() {
   const commitRename = async () => {
     const name = renameName.trim();
     if (!name || !file) return;
-    await api.updateFile(file.id, { name });
+    const st = useSheetStore.getState();
+    if (st.adminMode) await api.adminUpdateFile(file.id, { name });
+    else await api.updateFile(file.id, { name });
     useSheetStore.setState((s) => (s.file ? { file: { ...s.file, name } } : {}));
     closeRename();
   };
@@ -166,7 +170,14 @@ export default function Topbar() {
         </span>
         <button
           className={`back-btn${isFilePage ? " visible" : ""}`}
-          onClick={() => navigate("/")}
+          onClick={() => {
+            const st = useSheetStore.getState();
+            navigate(
+              st.adminMode && st.adminOwnerId
+                ? `/admin/user/${st.adminOwnerId}`
+                : "/",
+            );
+          }}
         >
           <span className="back-btn-chevron">{"\u2039"}</span>
         </button>

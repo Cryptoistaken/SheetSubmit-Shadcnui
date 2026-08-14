@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate, useParams } from "react-router";
 
 import AdminView from "@/components/home/AdminView";
 import ArchiveView from "@/components/home/ArchiveView";
@@ -31,10 +31,18 @@ function getAndroid(): AndroidBridge | null {
 export default function HomePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const { userId } = useParams();
   const showToast = useToast();
   const confirm = useConfirm();
 
-  const [tab, setTab] = useState<Tab>("files");
+  // Each home section has its own URL path (mobile + desktop): / = files,
+  // /files, /archive, /admin, /admin/user/:id (admin user detail). The active
+  // tab is derived from the pathname so every section is deep-linkable.
+  const path = location.pathname;
+  const tab: Tab =
+    path.startsWith("/admin") ? "admin" : path === "/archive" ? "archive" : "files";
+
   const [files, setFiles] = useState<SheetFile[] | null>(null);
   const [dupCounts, setDupCounts] = useState<Record<string, number>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -48,6 +56,12 @@ export default function HomePage() {
     setFiles(fs);
     setDupCounts(cd.counts ?? {});
   }, []);
+
+  useEffect(() => {
+    if (tab === "admin" && !user?.isAdmin) {
+      navigate("/", { replace: true });
+    }
+  }, [tab, user, navigate]);
 
   useEffect(() => {
     loadFiles();
@@ -181,20 +195,20 @@ export default function HomePage() {
       <div className="home-tabs">
         <button
           className={`home-tab${tab === "files" ? " active" : ""}`}
-          onClick={() => setTab("files")}
+          onClick={() => navigate("/")}
         >
           My Files
         </button>
         <button
           className={`home-tab${tab === "archive" ? " active" : ""}`}
-          onClick={() => setTab("archive")}
+          onClick={() => navigate("/archive")}
         >
           Archive
         </button>
         {user?.isAdmin ? (
           <button
             className={`home-tab${tab === "admin" ? " active" : ""}`}
-            onClick={() => setTab("admin")}
+            onClick={() => navigate("/admin")}
           >
             Admin
           </button>
@@ -228,7 +242,7 @@ export default function HomePage() {
 
       {tab === "admin" && user?.isAdmin ? (
         <div className="home-pane" id="homePaneAdmin">
-          <AdminView />
+          <AdminView initialUserId={userId} />
         </div>
       ) : null}
 

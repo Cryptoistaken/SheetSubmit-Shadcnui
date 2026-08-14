@@ -116,6 +116,20 @@ SheetSubmit-Shadcnui/
 ## 4. Handoff — where we left off & how to resume from any state
 
 ### Last state (as of last update)
+- **GitHub-style version diff page + minimal version history (this batch):** `DiffView`
+  redesigned to the GitHub look — summary bar ("1 file changed", `+add`/`−del`, diffstat
+  dots), toolbar (collapse-all icon, "Search within code" with live filter + `<mark>`
+  highlight + `N of M` counter, gear toggles unified/split), collapsible file card
+  (`<name>.xlsx` + type tag + stats), hunk header `@@ -1,{old} +1,{new} @@` (or
+  `-0,0` for created files), gutted diff rows (add/del/ctx). **No ⋯ expand-between-hunks
+  rows, no kebab in the file header (user request).** Light + dark `--gd-*` tokens added
+  in app.css; the old `.gdiff` rules remain but are superseded/dead. Version history
+  cards: footer "View diff"/"Restore" buttons replaced by a ⋯ (`version-kebab`) menu
+  with the same two actions (outside-click + Escape close). Page `VersionDiffPage.tsx`
+  (`/file/:id/version/:v`, + admin route) + `components/sheet/diff.ts`. Verified: web
+  `tsc -b` + `vite build` clean; browser smoke — search filter/highlight/count, split
+  toggle, hunk header, kebab menu render. **NOTE:** the diff pages + smoke verify were
+  done against the :3999 smoke env (session cookie `smoke`).
 - **Web mobile: paste 2FA key → auto TOTP + copy (no commit yet, requested):** in
   `sheetStore.commitCell` and `applyCells`, committing a valid base32 `twofakey` value
   (`[A-Z2-7]{10,}`) on a TOUCH device (`!s.isDesktop`) now generates the TOTP and
@@ -151,7 +165,7 @@ SheetSubmit-Shadcnui/
 
   - **Desktop INLINE cell editing (follow-up, commit `32f0059`):** single click on a cell starts editing DIRECTLY inside the cell (`store.openInlineEdit` → `<input class="cell-edit-input">` rendered in the `td.dc`; auto-focus + select, `onBlur` commits). The QEB pill is touch-only now — double-click no longer opens it on desktop. Enter/Tab/arrows/Escape behave like the pill editor; `moveEdit` keeps inline mode (`keepInline`). Store gained `inlineEdit` boolean (reset everywhere `qebOpen` resets). **Gotcha:** `lib/device.ts` touch detection was changed from `maxTouchPoints > 0` (Windows touchscreen laptops misdetect as touch) to primary-pointer signals: `matchMedia("(pointer: coarse)")` OR (`ontouchstart` AND NOT `pointer: fine`).  - **WA check dots update INSTANTLY per row** — `runWaChecks` now pushes each individual live-check result to the store as it resolves (immutable row replace + `set`), so the dot flips green the moment that row's check finishes; the final `persist()` still happens once at the end. Cache hits still apply up-front in one set.
   - **Check no longer creates undo/redo entries or version snapshots** — `runCheck` dropped its `{type:"rows", prevRows}` undo push AND its `persist("check")` action (now plain `persist()`), per explicit user request. Statuses still save; nothing to revert.
-  - **Upload on an EMPTY file is now undoable** — `applyUpload` (replace AND append) pushes a rows-undo snapshot when `lastDataIdx === -1` (no data rows) instead of wiping undo/redo; non-empty files keep the old clear-both-stacks parity.
+  - **Upload is ALWAYS revertable now** — `applyUpload` (replace AND append) pushes a rows-undo snapshot on EVERY upload (capped 100), regardless of whether the file was empty. User-requested change; old-app parity (non-empty uploads cleared undo/redo) deliberately dropped.
   - **Append rows now lands after the LAST USED row, not after the 100-pad** — `applyUpload("append")` does `rows.splice(lastDataIdx + 1, 0, ...incoming)` instead of `concat`.
   - **Append/Replace dialog skipped when the file is empty** — `SheetToolbar.handleFileChange` detects all-blank rows and calls `applyUpload("replace", …)` directly; `UploadOverlay` shows the real data count (not the padded 100).
   - **⋮ menu "Remove empty rows"** — `store.removeEmptyRows()` filters blank rows within `[0, lastDataIdx]` only (trailing free rows intact), rows-undo snapshot, `persist("clean")`, toast. Verified: 5 accounts with a deleted #3 → row compacted, pads intact.
@@ -592,6 +606,13 @@ cd /b/Studio/Tools/SheetSubmit && bun run   # starts old Express server
   `role="button"`/`tabIndex={0}` + Enter/Space `onKeyDown`; modal inputs get
   `aria-label`. `color-scheme` lives in `:root`/`.dark` (app.css) AND inline via
   theme.ts — keep both in sync when touching theme code.
+- **Device login no longer opens a browser (user-requested):** when the Android app
+  taps the bot's "Login" button, `completeTelegramLogin` (shared with `/api/auth/telegram`)
+  now finishes the session server-side and writes `device:<did>` directly — the bot
+  replies "return to the app" and the app's existing `/api/auth/device` poll picks the
+  session up. No "Open URL"/"Copy URL" buttons for device logins. Web login (no did)
+  is unchanged and still uses the Open-URL hop. Falls back to the web path if the
+  `didchat` binding (15 min TTL) expired.
 
 ---
 

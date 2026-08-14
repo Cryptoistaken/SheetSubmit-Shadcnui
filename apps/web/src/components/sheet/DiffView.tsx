@@ -1,71 +1,133 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
+import {
+  ChevronDown,
+  ChevronUp,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  Search,
+  Settings,
+  X,
+} from "lucide-react";
 import { useSheetStore } from "@/stores/sheetStore";
-import { dedupKeyForRow } from "@/stores/sheetStore";
 import { getVersionRows } from "@/stores/versionCache";
-import type { Row, VersionMeta } from "@/lib/types";
+import type { VersionMeta } from "@/lib/types";
+import type { DiffLine, DiffResult } from "./diff";
+import { vComputeDiff } from "./diff";
 
-interface DiffLine {
-  type: "ctx" | "add" | "del";
-  text: string;
-}
-
-interface DiffResult {
-  lines: DiffLine[];
-  add: number;
-  del: number;
-  oldLen: number;
-  newLen: number;
-}
-
-function vRowLine(r: Row | null | undefined, cols: { key: string }[]): string {
-  const vals: string[] = [];
-  cols.forEach((c) => {
-    const v = r ? r[c.key] : null;
-    vals.push(v === null || v === undefined ? "" : String(v));
-  });
-  return vals.join(" | ");
-}
-
-function vComputeDiff(
-  parentRows: Row[],
-  childRows: Row[],
-  cols: { key: string }[],
-): { lines: DiffLine[]; add: number; del: number } {
-  const vRowMap = (rows: Row[]) => {
-    const m = new Map<string, Row>();
-    rows.forEach((r) => {
-      const k = dedupKeyForRow(r);
-      if (k) m.set(String(k), r);
-    });
-    return m;
-  };
-  const om = vRowMap(parentRows);
-  const cm = vRowMap(childRows);
-  const keys = new Set<string>([...om.keys(), ...cm.keys()]);
-  const lines: DiffLine[] = [];
-  let add = 0;
-  let del = 0;
-  keys.forEach((k) => {
-    const o = om.get(k);
-    const n = cm.get(k);
-    if (o && n) {
-      if (vRowLine(o, cols) === vRowLine(n, cols)) {
-        lines.push({ type: "ctx", text: vRowLine(n, cols) });
-      } else {
-        lines.push({ type: "del", text: vRowLine(o, cols) });
-        lines.push({ type: "add", text: vRowLine(n, cols) });
-        del++;
-        add++;
-      }
-    } else if (n) {
-      lines.push({ type: "add", text: vRowLine(n, cols) });
-      add++;
-    } else {
-      lines.push({ type: "del", text: vRowLine(o, cols) });
-      del++;
+function Mark({ text, q }: { text: string; q: string }) {
+  const qq = q.trim();
+  if (!qq) return <>{text}</>;
+  const tl = text.toLowerCase();
+  const ql = qq.toLowerCase();
+  const out: ReactNode[] = [];
+  let i = 0;
+  let k = 0;
+  while (i < text.length) {
+    const idx = tl.indexOf(ql, i);
+    if (idx < 0) {
+      out.push(text.slice(i));
+      break;
     }
-  });
-  return { lines, add, del };
+    if (idx > i) out.push(text.slice(i, idx));
+    out.push(<mark key={k++}>{text.slice(idx, idx + ql.length)}</mark>);
+    i = idx + ql.length;
+  }
+  return <>{out}</>;
+}
+
+interface NumInfo {
+  on: number;
+  nn: number;
+}
+
+function UnifiedRows({
+  lines,
+  nums,
+  idxs,
+  q,
+}: {
+  lines: DiffLine[];
+  nums: NumInfo[];
+  idxs: number[];
+  q: string;
+}) {
+  return (
+    <>
+      {idxs.map((i) => {
+        const ln = lines[i];
+        const { on, nn } = nums[i];
+        return (
+          <div key={i} className={"ghdiff-line " + ln.type}>
+            <span className="ghdiff-num">{on || ""}</span>
+            <span className="ghdiff-num">{nn || ""}</span>
+            <div className="ghdiff-code">
+              <Mark text={ln.text} q={q} />
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function SplitRows({
+  lines,
+  nums,
+  idxs,
+  q,
+}: {
+  lines: DiffLine[];
+  nums: NumInfo[];
+  idxs: number[];
+  q: string;
+}) {
+  const pairs: { left: number; right: number }[] = [];
+  let i = 0;
+  while (i < idxs.length) {
+    const li = idxs[i];
+    const ln = lines[li];
+    if (ln.type === "del") {
+      const nxt = idxs[i + 1];
+      if (nxt !== undefined && lines[nxt].type === "add") {
+        pairs.push({ left: li, right: nxt });
+        i += 2;
+      } else {
+        pairs.push({ left: li, right: -1 });
+        i += 1;
+      }
+    } else if (ln.type === "ctx") {
+      pairs.push({ left: li, right: li });
+      i += 1;
+    } else {
+      pairs.push({ left: -1, right: li });
+      i += 1;
+    }
+  }
+  return (
+    <>
+      {pairs.map((p, k) => {
+        const left = p.left >= 0 ? lines[p.left] : null;
+        const right = p.right >= 0 ? lines[p.right] : null;
+        return (
+          <div key={k} className="ghdiff-pair">
+            <div className={"ghdiff-side" + (left ? " " + left.type : " blank")}>
+              <span className="ghdiff-num">{left ? nums[p.left].on : ""}</span>
+              <div className="ghdiff-code">
+                {left ? <Mark text={left.text} q={q} /> : null}
+              </div>
+            </div>
+            <div className={"ghdiff-side" + (right ? " " + right.type : " blank")}>
+              <span className="ghdiff-num">{right ? nums[p.right].nn : ""}</span>
+              <div className="ghdiff-code">
+                {right ? <Mark text={right.text} q={q} /> : null}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
 }
 
 export default function DiffView({
@@ -82,21 +144,25 @@ export default function DiffView({
   typeName: string;
 }) {
   const columns = useSheetStore((s) => s.columns);
+  const adminMode = useSheetStore((s) => s.adminMode);
   const [status, setStatus] = useState<"loading" | "error" | "done">("loading");
   const [diff, setDiff] = useState<DiffResult | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
+  const [split, setSplit] = useState(false);
+  const [q, setQ] = useState("");
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        const cur = await getVersionRows(fileId, rec.v);
+        const cur = await getVersionRows(fileId, rec.v, adminMode);
         if (cancelled) return;
         if (!cur.ok) {
           setStatus("error");
           return;
         }
         if (prev) {
-          const old = await getVersionRows(fileId, prev.v);
+          const old = await getVersionRows(fileId, prev.v, adminMode);
           if (cancelled) return;
           const d = vComputeDiff(old.ok ? old.rows : [], cur.rows, columns);
           setDiff({
@@ -117,61 +183,139 @@ export default function DiffView({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fileId, rec.v, prev?.v]);
+  }, [fileId, rec.v, prev?.v, adminMode]);
+
+  const render = useMemo(() => {
+    if (!diff) return null;
+    let o = 1;
+    let n = 1;
+    const nums = diff.lines.map((ln) => {
+      const on = ln.type === "del" || ln.type === "ctx" ? o++ : 0;
+      const nn = ln.type === "add" || ln.type === "ctx" ? n++ : 0;
+      return { on, nn };
+    });
+    const oldTotal = o - 1;
+    const newTotal = n - 1;
+    const qq = q.trim().toLowerCase();
+    const idxs = diff.lines
+      .map((_, i) => i)
+      .filter((i) => (qq ? diff.lines[i].text.toLowerCase().includes(qq) : true));
+    const hunk =
+      oldTotal === 0
+        ? "@@ -0,0 +1," + newTotal + " @@"
+        : "@@ -1," + oldTotal + " +1," + newTotal + " @@";
+    return { nums, idxs, qq, hunk };
+  }, [diff, q]);
 
   if (status === "loading") {
-    return <div className="version-preview">Loading preview.</div>;
+    return <div className="ghdiff-loading">Loading diff…</div>;
   }
-  if (status === "error" || !diff) {
-    return <div className="version-preview">Error loading preview</div>;
+  if (status === "error" || !diff || !render) {
+    return <div className="ghdiff-loading">Error loading diff</div>;
   }
 
-  let o = 1;
-  let n = 1;
-  const addBars = Array.from({ length: diff.add }, (_, i) => (
-    <span key={"a" + i} className="vbar-add" />
-  ));
-  const delBars = Array.from({ length: diff.del }, (_, i) => (
-    <span key={"d" + i} className="vbar-del" />
-  ));
+  const addPct = diff.add + diff.del > 0 ? diff.add / (diff.add + diff.del) : 0;
+  const lit = Math.round(addPct * 5);
+  const matched = render.idxs.length;
 
   return (
-    <div className="vdiff">
-      <div className="vdiff-file">
-        <span className="vdiff-chevron">▼</span>
-        <span className="vdiff-path">
-          {fileName}.xlsx
-        </span>
-        <span className="vdiff-tag">{typeName}</span>
-        <span className="vdiff-file-stats">
-          <span className="vstat-add">+{diff.add}</span>
-          <span className="vstat-del">−{diff.del}</span>
-        </span>
-        <span className="vdiff-bar">
-          {addBars}
-          {delBars}
+    <div className="ghdiff">
+      <div className="ghdiff-summary">
+        <span className="ghdiff-files">1 file changed</span>
+        <span className="ghdiff-sum-stats">
+          <span className="ghdiff-sum-add">+{diff.add}</span>
+          <span className="ghdiff-sum-del">−{diff.del}</span>
+          <span className="ghdiff-dots">
+            {[0, 1, 2, 3, 4].map((i) => (
+              <i key={i} className={i < lit ? "on" : ""} />
+            ))}
+          </span>
         </span>
       </div>
-      <div className="vdiff-hunk">
-        <span className="vdiff-hunk-menu">⋯</span>
-        <span className="vdiff-hunk-text">
-          @@ -1,{Math.max(1, diff.oldLen)} +1,{Math.max(1, diff.newLen)} @@
-        </span>
+
+      <div className="ghdiff-toolbar">
+        <button
+          className="ghdiff-icon-btn"
+          onClick={() => setCollapsed((c) => !c)}
+          aria-label={collapsed ? "Expand file" : "Collapse file"}
+          title={collapsed ? "Expand file" : "Collapse file"}
+        >
+          {collapsed ? <ChevronsUpDown size={16} /> : <ChevronsDownUp size={16} />}
+        </button>
+        <div className="ghdiff-search">
+          <Search size={14} />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search within code"
+            aria-label="Search within code"
+          />
+          {q ? (
+            <button
+              className="ghdiff-search-clear"
+              onClick={() => setQ("")}
+              aria-label="Clear search"
+            >
+              <X size={13} />
+            </button>
+          ) : null}
+          {q ? (
+            <span className="ghdiff-search-count">
+              {matched} of {diff.lines.length}
+            </span>
+          ) : null}
+        </div>
+        <button
+          className="ghdiff-icon-btn"
+          onClick={() => setSplit((s) => !s)}
+          aria-label={split ? "Show unified view" : "Show split view"}
+          title={split ? "Show unified view" : "Show split view"}
+        >
+          <Settings size={16} />
+        </button>
       </div>
-      <div className="vdiff-lines">
-        {diff.lines.map((ln, i) => {
-          const og = ln.type === "del" || ln.type === "ctx" ? String(o++) : "";
-          const ng = ln.type === "add" || ln.type === "ctx" ? String(n++) : "";
-          const pfx = ln.type === "add" ? "+" : ln.type === "del" ? "−" : " ";
-          return (
-            <div key={i} className={"vline " + ln.type}>
-              <span className="vnum old">{og}</span>
-              <span className="vnum new">{ng}</span>
-              <span className="vpfx">{pfx}</span>
-              <span className="vcode">{ln.text}</span>
+
+      <div className={"ghdiff-card" + (collapsed ? " collapsed" : "")}>
+        <div className="ghdiff-card-head">
+          <button
+            className="ghdiff-chevron"
+            onClick={() => setCollapsed((c) => !c)}
+            aria-label={collapsed ? "Expand file" : "Collapse file"}
+          >
+            <ChevronDown size={14} />
+          </button>
+          <span className="ghdiff-fname">{fileName}.xlsx</span>
+          <span className="ghdiff-tag">{typeName}</span>
+          <span className="ghdiff-file-stats">
+            <span className="ghdiff-add">+{diff.add}</span>
+            <span className="ghdiff-del">−{diff.del}</span>
+          </span>
+        </div>
+        {!collapsed ? (
+          <div className="ghdiff-body">
+            <div className="ghdiff-hunk">
+              <ChevronUp size={14} className="ghdiff-hunk-ico" />
+              <span className="ghdiff-hunk-text">{render.hunk}</span>
             </div>
-          );
-        })}
+            {matched === 0 ? (
+              <div className="ghdiff-empty">No matches for “{q}”</div>
+            ) : split ? (
+              <SplitRows
+                lines={diff.lines}
+                nums={render.nums}
+                idxs={render.idxs}
+                q={render.qq}
+              />
+            ) : (
+              <UnifiedRows
+                lines={diff.lines}
+                nums={render.nums}
+                idxs={render.idxs}
+                q={render.qq}
+              />
+            )}
+          </div>
+        ) : null}
       </div>
     </div>
   );

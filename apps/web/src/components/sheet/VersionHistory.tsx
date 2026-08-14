@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Eye, MoreHorizontal, RotateCcw } from "lucide-react";
 import { useNavigate } from "react-router";
 import { api } from "@/lib/api";
 import { useConfirm } from "@/lib/confirm";
@@ -6,7 +7,6 @@ import { useToast } from "@/lib/toast";
 import { dedupKeyForRow, useSheetStore } from "@/stores/sheetStore";
 import { getCachedVersionRows, getVersionRows } from "@/stores/versionCache";
 import type { VersionMeta } from "@/lib/types";
-import DiffView from "./DiffView";
 
 const PAGE_SIZE = 50;
 const WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -146,43 +146,40 @@ function computeSummary(rec: VersionMeta, prev: VersionMeta | null, fileId: stri
   return "Same row count (" + rec.rowCount + " rows)";
 }
 
-function detailText(rec: VersionMeta, prev: VersionMeta | null): string {
+function statCounts(
+  rec: VersionMeta,
+  prev: VersionMeta | null,
+  fileId: string,
+): { added: number; removed: number } {
   if (!prev) {
-    return (
-      "Created file with " +
-      rec.rowCount +
-      " row" +
-      (rec.rowCount === 1 ? "" : "s") +
-      " · " +
-      rec.rowCount +
-      " rows"
-    );
+    return { added: rec.rowCount ?? 0, removed: 0 };
+  }
+  const cur = getCachedVersionRows(fileId, rec.v);
+  const old = getCachedVersionRows(fileId, prev.v);
+  if (cur && old && cur.keys.size && old.keys.size) {
+    let added = 0;
+    let removed = 0;
+    cur.keys.forEach((k) => {
+      if (!old.keys.has(k)) added++;
+    });
+    old.keys.forEach((k) => {
+      if (!cur.keys.has(k)) removed++;
+    });
+    return { added, removed };
   }
   const delta = (rec.rowCount ?? 0) - (prev.rowCount ?? 0);
-  const txt =
-    delta >= 0
-      ? "Added " + delta + " row" + (delta === 1 ? "" : "s")
-      : "Removed " + -delta + " row" + (delta === -1 ? "" : "s");
-  return txt + " · " + rec.rowCount + " rows";
-}
-
-function deltaTxt(rec: VersionMeta, prev: VersionMeta): string {
-  const delta = (rec.rowCount ?? 0) - (prev.rowCount ?? 0);
-  return delta > 0 ? "+" + delta : String(delta);
+  return { added: Math.max(delta, 0), removed: Math.max(-delta, 0) };
 }
 
 interface ItemProps {
   rec: VersionMeta;
   prev: VersionMeta | null;
   fileId: string;
-  fileName: string;
-  typeName: string;
   summary: string;
-  previewV: number | null;
+  stats: { added: number; removed: number };
   renaming: { v: number; name: string } | null;
-  onPreview: () => void;
+  onViewDiff: () => void;
   onRestore: () => void;
-  onFork: () => void;
   onStartRename: () => void;
   onRenameChange: (name: string) => void;
   onRenameCommit: () => void;
@@ -190,27 +187,34 @@ interface ItemProps {
 }
 
 function VersionItem(props: ItemProps) {
-  const {
-    rec,
-    prev,
-    fileId,
-    fileName,
-    typeName,
-    summary,
-    previewV,
-    renaming,
-  } = props;
+  const { rec, summary, stats, renaming } = props;
   const isRenaming = renaming?.v === rec.v;
-  const badgeClass =
-    rec.action === "restore"
-      ? " restore"
-      : rec.action === "replace" || rec.action === "merge"
-        ? " replace"
-        : "";
+  const actionLabel = ACTION_LABELS[rec.action] ?? rec.action;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
+
   return (
-    <div className={"version-item" + (previewV === rec.v ? " open" : "")}>
+    <div className="version-item">
       <div className="version-head">
-        <div className="version-meta">
+        <div className="version-main">
           {rec.name && !isRenaming ? (
             <div className="version-name-row">
               <span className="version-name">{rec.name}</span>
@@ -248,53 +252,63 @@ function VersionItem(props: ItemProps) {
               />
             </div>
           ) : null}
-          <div className="version-time">{fmtVersionTime(rec.ts)}</div>
-          <div className="version-summary">{summary}</div>
-          <div className="version-detail">{detailText(rec, prev)}</div>
+          <div className="version-time">
+            {fmtVersionTime(rec.ts)}
+            <span className="version-action"> · {actionLabel}</span>
+          </div>
         </div>
-        <span className={"version-badge" + badgeClass}>
-          [{prev ? deltaTxt(rec, prev) : "New"}] {ACTION_LABELS[rec.action] ?? rec.action}
-        </span>
+        <div className="version-side">
+          <div className="version-chips">
+            <span className="vstat-chip add">+{stats.added}</span>
+            {stats.removed > 0 ? (
+              <span className="vstat-chip del">−{stats.removed}</span>
+            ) : null}
+          </div>
+          <div className="version-kebab-wrap" ref={menuRef}>
+            <button
+              className="version-kebab"
+              aria-label="Version actions"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuOpen((o) => !o);
+              }}
+            >
+              <MoreHorizontal size={16} />
+            </button>
+            {menuOpen ? (
+              <div className="version-kebab-menu" role="menu">
+                <button
+                  className="version-menu-item"
+                  role="menuitem"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuOpen(false);
+                    props.onViewDiff();
+                  }}
+                >
+                  <Eye size={14} />
+                  View diff
+                </button>
+                <button
+                  className="version-menu-item danger"
+                  role="menuitem"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuOpen(false);
+                    props.onRestore();
+                  }}
+                >
+                  <RotateCcw size={14} />
+                  Restore
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
       </div>
-      <div className="version-footer-actions">
-        <button
-          className="version-fork-btn"
-          onClick={(e) => {
-            e.stopPropagation();
-            props.onFork();
-          }}
-        >
-          Copy version
-        </button>
-        <span className="spacer"></span>
-        <button
-          className="btn btn-ghost btn-sm version-preview-btn"
-          onClick={(e) => {
-            e.stopPropagation();
-            props.onPreview();
-          }}
-        >
-          Preview
-        </button>
-        <button
-          className="btn btn-danger btn-sm version-restore-btn"
-          onClick={(e) => {
-            e.stopPropagation();
-            props.onRestore();
-          }}
-        >
-          Restore
-        </button>
-      </div>
-      {previewV === rec.v ? (
-        <DiffView
-          fileId={fileId}
-          rec={rec}
-          prev={prev}
-          fileName={fileName}
-          typeName={typeName}
-        />
-      ) : null}
+      <div className="version-summary">{summary}</div>
     </div>
   );
 }
@@ -307,8 +321,8 @@ export default function VersionHistory({
   onClose: () => void;
 }) {
   const fileId = useSheetStore((s) => s.fileId);
-  const fileName = useSheetStore((s) => s.file?.name ?? "file");
-  const typeName = useSheetStore((s) => s.file?.type ?? "fb_cookie");
+  const adminMode = useSheetStore((s) => s.adminMode);
+  const adminOwnerId = useSheetStore((s) => s.adminOwnerId);
   const restoreVersion = useSheetStore((s) => s.restoreVersion);
   const confirm = useConfirm();
   const showToast = useToast();
@@ -319,7 +333,6 @@ export default function VersionHistory({
   const [page, setPage] = useState(1);
   const [groupsOpen, setGroupsOpen] = useState<Record<string, boolean>>({});
   const [summaries, setSummaries] = useState<Record<string, string>>({});
-  const [previewV, setPreviewV] = useState<number | null>(null);
   const [renaming, setRenaming] = useState<{ v: number; name: string } | null>(null);
   const renamingDone = useRef(false);
 
@@ -330,17 +343,16 @@ export default function VersionHistory({
     setPage(1);
     setGroupsOpen({});
     setSummaries({});
-    setPreviewV(null);
     setRenaming(null);
     renamingDone.current = false;
-    api
-      .getHistory(fileId)
+    const list = adminMode ? api.adminGetHistory(fileId) : api.getHistory(fileId);
+    list
       .then((m) => setMeta(m ?? []))
       .catch(() => {
         setLoadError(true);
         setMeta([]);
       });
-  }, [open, fileId]);
+  }, [open, fileId, adminMode]);
 
   const pageItems = useMemo(() => {
     if (!meta || !meta.length) return [];
@@ -379,14 +391,14 @@ export default function VersionHistory({
     });
     setSummaries(upd);
     pageItems.forEach((it) => {
-      void getVersionRows(fileId, it.rec.v).then(() => {
+      void getVersionRows(fileId, it.rec.v, adminMode).then(() => {
         setSummaries((old) => ({
           ...old,
           ["v" + it.rec.v]: computeSummary(it.rec, it.prev, fileId),
         }));
       });
     });
-  }, [fileId, meta, pageItems]);
+  }, [fileId, meta, pageItems, adminMode]);
 
   if (!open || !fileId) return null;
 
@@ -404,8 +416,10 @@ export default function VersionHistory({
     const r = renaming;
     if (!r) return;
     renamingDone.current = true;
-    api
-      .nameVersion(fileId, r.v, r.name)
+    const req = adminMode
+      ? api.adminNameVersion(fileId, r.v, r.name)
+      : api.nameVersion(fileId, r.v, r.name);
+    req
       .then((res) => {
         showToast(r.name ? "Version renamed" : "Version name cleared");
         if (res?.meta) setMeta(res.meta);
@@ -433,24 +447,12 @@ export default function VersionHistory({
     if (await restoreVersion(rec.v)) onClose();
   };
 
-  const fork = async (rec: VersionMeta) => {
-    const ok = await confirm("Copy this version into a new file?", "Copy");
-    if (!ok) return;
-    try {
-      const res = await api.forkVersion(fileId, rec.v);
-      const newId =
-        res?.file?.id ??
-        (res as { fileId?: string } | null)?.fileId ??
-        (res as { id?: string } | null)?.id;
-      if (!newId) {
-        showToast("Fork failed");
-        return;
-      }
-      onClose();
-      showToast("Forked to new file");
-      navigate("/file/" + newId);
-    } catch {
-      showToast("Fork failed");
+  const viewDiff = (rec: VersionMeta) => {
+    onClose();
+    if (adminMode) {
+      navigate(`/admin/user/${adminOwnerId ?? ""}/file/${fileId}/version/${rec.v}`);
+    } else {
+      navigate("/file/" + fileId + "/version/" + rec.v);
     }
   };
 
@@ -547,16 +549,14 @@ export default function VersionHistory({
                       rec={it.rec}
                       prev={it.prev}
                       fileId={fileId}
-                      fileName={fileName}
-                      typeName={typeName}
-                      summary={summaries["v" + it.rec.v] ?? computeSummary(it.rec, it.prev, fileId)}
-                      previewV={previewV}
-                      renaming={renaming}
-                      onPreview={() =>
-                        setPreviewV((p) => (p === it.rec.v ? null : it.rec.v))
+                      summary={
+                        summaries["v" + it.rec.v] ??
+                        computeSummary(it.rec, it.prev, fileId)
                       }
+                      stats={statCounts(it.rec, it.prev, fileId)}
+                      renaming={renaming}
+                      onViewDiff={() => viewDiff(it.rec)}
                       onRestore={() => void restore(it.rec)}
-                      onFork={() => void fork(it.rec)}
                       onStartRename={() => startRename(it.rec)}
                       onRenameChange={(name) =>
                         setRenaming((r) => (r ? { v: r.v, name } : r))

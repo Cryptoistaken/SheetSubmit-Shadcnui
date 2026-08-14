@@ -1,5 +1,6 @@
 import { Archive, ArrowLeft, Download, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router";
 
 import { api } from "@/lib/api";
 import { useConfirm } from "@/lib/confirm";
@@ -13,10 +14,11 @@ function userName(u: { firstName?: string; lastName?: string }): string {
   return ((u.firstName ?? "") + " " + (u.lastName ?? "")).trim() || "Unknown";
 }
 
-export default function AdminView() {
+export default function AdminView({ initialUserId }: { initialUserId?: string }) {
   const showToast = useToast();
   const confirm = useConfirm();
   const { user: me } = useAuth();
+  const navigate = useNavigate();
 
   const [stats, setStats] = useState<{ totalUsers: number; totalFiles: number } | null>(null);
   const [users, setUsers] = useState<AdminUser[] | null>(null);
@@ -41,16 +43,25 @@ export default function AdminView() {
   }, [loadList]);
 
   const showList = useCallback(() => {
-    setDetailUser(null);
-    setDetailArchived([]);
-    loadList();
-  }, [loadList]);
+    navigate("/admin");
+  }, [navigate]);
 
   const showDetail = useCallback(async (userId: string) => {
     const [u, a] = await Promise.all([api.adminUser(userId), api.adminUserArchive(userId)]);
     setDetailUser(u);
     setDetailArchived(a);
   }, []);
+
+  // Deep-link sync: /admin/user/:id opens that user's detail; back on /admin resets.
+  useEffect(() => {
+    if (initialUserId) {
+      void showDetail(initialUserId);
+    } else {
+      setDetailUser(null);
+      setDetailArchived([]);
+      loadList();
+    }
+  }, [initialUserId, showDetail, loadList]);
 
   const onSearch = (q: string) => {
     setSearch(q);
@@ -194,7 +205,20 @@ export default function AdminView() {
           {files.map((f) => {
             const count = f.dataCount ?? f.rowCount ?? 0;
             return (
-              <div key={f.id} className="file-card">
+              <div
+                key={f.id}
+                className="file-card"
+                role="button"
+                tabIndex={0}
+                title={"Open " + f.name}
+                onClick={() => navigate(`/admin/user/${detailUser.id}/file/${f.id}`)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    navigate(`/admin/user/${detailUser.id}/file/${f.id}`);
+                  }
+                }}
+              >
                 <div className="file-card-icon">
                   <svg
                     width="16"
