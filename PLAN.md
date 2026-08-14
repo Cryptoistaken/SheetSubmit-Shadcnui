@@ -101,6 +101,12 @@ SheetSubmit-Shadcnui/
 ## 4. Handoff — where we left off & how to resume from any state
 
 ### Last state (as of last update)
+- **Phase 3 fixes round 2 — commit `974fccb`:** user-reported issues fixed:
+  - **Grid layout broken (headers/cells misaligned, ~65% empty, content-sized columns):** ROOT CAUSE — the `<table className="grid">` collides with **Tailwind v4's on-demand `.grid { display: grid }` utility**. The table became `display: grid`, which makes `table-layout: fixed` inert (computed style still reports "fixed" — misleading) and thead/tbody become independent anonymous tables sized by content. FIX: `display: table` added to the `table.grid` rule in app.css (unlayered, beats the layered Tailwind utility). The old app had no Tailwind so `class="grid"` was inert there. **Gotcha: never rename `table.grid` without keeping `display: table`, and don't add Tailwind's `grid` class to anything that must be a table.** Verified live: columns now equal-width (36|109|109|109|36) and headers align with cells. (The stale `ss_cols_smoke=["uid"]` one-column state was the user's own toggle testing — not a bug.)
+  - **Check button looked wrong:** it showed AMBER text (`.warning` = duplicates state, from the dup rows in the smoke file). Removed the amber warning from the button — always white-on-blue now.
+  - **Page Check toggle missing:** it was admin-gated (`user.isAdmin`); now always visible in the check dropdown (persists `ss_waCheck`; the WA flow itself is still Phase 4).
+  - **TOTP code visible in toast:** dot-click toast now says just "TOTP copied" (no code — secret).
+  - **Double-tap copy/paste in cells NOT working:** the native `dblclick` event was unreliable (QEB opening between the two clicks, and `dblclick` never fires on touch). Replaced with a **click-based double-tap detector** in `SheetGrid.handleClick` (same cell within 400ms → `doubleTap` + QEB cancel; single clicks unchanged). Clipboard failures are now visible toasts ("Cannot copy" / "Cannot read clipboard") instead of silent. Works for mouse AND touch (tap-tap).
 - **Phase 3 parity-fix pass — commit `f0b7783` (after `6becf75`).** User reported the sheet
   "looks broken / missing things / behavior differs" vs the old HTML app. Two read-only
   parity audits (CSS/layout + behavior) found and fixed:
