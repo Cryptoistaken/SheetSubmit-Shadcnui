@@ -88,7 +88,7 @@ SheetSubmit-Shadcnui/
 | **0 — Scaffold** (Vite+shadcn monorepo, tokens, theme, build boots) | ✅ Done | `e7eedb5` |
 | **0b — Logos + full skeleton** (public SVGs wired, shared pkg, server + web stubs) | ✅ Done | `957b5e2` |
 | **1 — Backend TS port** (install server deps; split `server/index.js` into modules; old frontend must run against new server unchanged) | ✅ Done | `b2f353d` |
-| **2 — Auth + Home** (device login, file grid, FAB, archive, admin; screenshots == old) | ⬜ | — |
+| **2 — Auth + Home** (device login, file grid, FAB, archive, admin; screenshots == old) | ✅ Done | *(see §4)* |
 | **3 — Sheet engine** (grid, editing, undo/redo, persist, quick-edit bar; custom table + memo/virtualization) | ⬜ | — |
 | **4 — Checks, versions, data ops** (check/auto-check, WA cache, history modal + diff, merge/replace xlsx, download) | ⬜ | — |
 | **5 — Bubble (Android)** (`?bubble=1&file=` mode, clipboard automation, 6s refresh, bundle size) | ⬜ | — |
@@ -117,7 +117,31 @@ SheetSubmit-Shadcnui/
     new server (requires a real Telegram session against production Redis). The
     old frontend should run unchanged with `STATIC_ROOT` pointed at the old repo
     root and `REDIS_URL` at production — see gotchas for the exact recipe.
-- Phases 2–6 not started.
+- **Phase 2 (Auth + Home) complete** — React UI for login/home/archive/admin.
+  - Auth: `AuthContext` (`/api/auth/me` on mount, error or `null` → unauthenticated),
+    `LoginScreen` (Telegram `?start=login` button from `/api/bot/info`), `Topbar`
+    (theme-aware logo, back button on `/file/:id`, `/api/health` poll every 15s
+    w/ 1.5× backoff to 2min, gear panel: user card + Night mode toggle +
+    Logout), router gated on auth state.
+  - Home: tabs (My Files / Archive / Admin, admin hidden unless `isAdmin`),
+    file grid + cards (download/rename/delete, long-press 500ms selection mode
+    with `.sel-bar`, cross-dup badge from `/api/cross-dups`), FAB (create
+    "Facebook YYYY-MM-DD" with ` (N)` dedup + xlsx upload via
+    `lib/xlsx.ts` → `createFile` + `persist({rows,dataCount,action:"import"})`),
+    rename modal, archive (30-day countdown, restore/permanent delete, batch
+    ops), admin (stats, 300ms-debounced search, user list/detail, delete user).
+  - New modules: `lib/api.ts` (full 50+ method typed client mirroring old
+    `js/api.js`), `lib/xlsx.ts` (import/export), `lib/toast.tsx`/`lib/confirm.tsx`
+    (providers), `src/app.css` (ported old CSS, `.dark` selector, token fixes).
+  - Deps added: `xlsx@0.18.5` (apps/web). Vite dev proxy added: `/api` → `:3000`.
+  - Verified: web+server `tsc` clean, `bun run --cwd apps/web build` clean;
+    smoke-tested against throwaway Redis (`ss:session:smoke` + seeded user/files):
+    login screen (no session), home grid w/ cards+meta, tabs, FAB menu, gear
+    panel, SheetPage stub at `/file/:id` — all render. `/api/bot/info` 404s
+    without `TG_BOT_TOKEN` → login button shows "Connection failed" (old-app parity).
+  - Known gaps: SheetPage is a stub (Phase 3); old-app screenshot diff not yet
+    run (needs live creds + pixel comparison); bubble/device-login flow is Phase 5.
+- Phases 3–6 not started.
 
 ### Resume recipe (any session/AI, from any state)
 1. Read this file (you are here). Read `AGENTS.md` for rules.
@@ -206,6 +230,18 @@ cd /b/Studio/Tools/SheetSubmit && bun run   # starts old Express server
 - **bun on this machine is an npm shim** (`C:\Users\Ratul\AppData\Roaming\npm\bun.cmd`),
   not a standalone binary — `Start-Process bun` fails ("not a valid Win32 application").
   Use the real exe: `C:\Users\Ratul\AppData\Roaming\npm\node_modules\bun\bin\bun.exe`.
+- **Smoke-testing Phase 2+ without vite:** the server serves `apps/web/dist` by
+  default (`STATIC_ROOT`), so build once and hit `http://localhost:3000` directly —
+  no vite dev server needed. Vite dev proxy (`/api` → `:3000`) exists for
+  `bun run dev:web` workflow.
+- **Ported CSS lives in `src/app.css`** (imported at the end of `index.css`). Old
+  `[data-theme="dark"]` selectors are converted to `.dark` (new theme.ts toggles
+  the `.dark` class only). Old `--green` was a bug (cyan #00b4d8); the port uses
+  real green `#16a34a` + a separate `--cyan: #00b4d8` — "Connected" pill and
+  sync accents will differ slightly from the old app by design (PLAN §2 fix).
+- **`/api/bot/info` only exists when `TG_BOT_TOKEN` is set** — without it the
+  login button falls back to "Connection failed" (matches old app behavior).
+  Phase-2 UI treats a thrown `me()` error OR `null` body as unauthenticated.
 
 ---
 

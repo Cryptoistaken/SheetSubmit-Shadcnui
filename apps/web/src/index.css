@@ -153,3 +153,5 @@
     @apply font-sans;
   }
 }
+
+@import "./app.css";

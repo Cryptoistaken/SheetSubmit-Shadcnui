@@ -44,3 +44,49 @@ export const FILE_TYPE_DEFS: Record<FileType, FileTypeDef> = {
     ],
   },
 };
+
+/** Authenticated Telegram user. */
+export interface User {
+  id: string;
+  firstName?: string;
+  lastName?: string;
+  username?: string;
+  photoUrl?: string | null;
+  isAdmin?: boolean;
+  fileId?: string | null;
+  lastLogin?: number;
+  fileCount?: number;
+  archivedCount?: number;
+  files?: SheetFile[];
+}
+
+export interface CrossDupEntry {
+  fileId: string;
+  fileName: string;
+  rowIdx: number;
+}
+
+export interface CrossDupResult {
+  counts: Record<string, number>;
+  dups?: Record<string, CrossDupEntry[]>;
+}
+
+export type ArchiveFile = SheetFile & { deletedAt?: number };
+
+export interface VersionMeta {
+  v: number;
+  action: string;
+  ts: number;
+  name?: string | null;
+  summary?: string;
+}
+
+export interface HistoryResult {
+  undo: unknown[];
+  redo: unknown[];
+}
+
+export type AdminUser = User & {
+  fileCount: number;
+  archivedCount: number;
+};
