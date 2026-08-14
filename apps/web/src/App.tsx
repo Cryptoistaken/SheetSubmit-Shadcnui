@@ -10,9 +10,11 @@ export default function App() {
     <div className="flex h-dvh flex-col">
       <header className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4">
         <div className="flex items-center gap-2">
-          <span className="flex size-5 items-center justify-center rounded-md bg-foreground text-[10px] font-bold text-background">
-            S
-          </span>
+          <img
+            src={theme === "dark" ? "/logo-dark.svg" : "/logo-light.svg"}
+            alt="SheetSubmit"
+            className="size-5"
+          />
           <span className="text-sm font-semibold tracking-tight">SheetSubmit</span>
         </div>
         <Button variant="ghost" size="icon" onClick={toggle} aria-label="Toggle theme">

@@ -26,6 +26,9 @@ export function useTheme() {
     } catch {
       // ignore
     }
+    // Swap favicon for the active theme, like the original app.
+    const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    if (favicon) favicon.href = theme === "dark" ? "/favicon-dark.svg" : "/favicon-light.svg";
   }, [theme]);
 
   const toggle = useCallback(() => setTheme((t) => (t === "dark" ? "light" : "dark")), []);
