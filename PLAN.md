@@ -1,0 +1,215 @@
+# SheetSubmit ShadcnUI — Master Plan & Handoff
+
+> **Read this first.** This is the single source of truth for the SheetSubmit migration.
+> Any person, session, or AI model continuing this work starts here — even cold, with no
+> memory of previous sessions. If this file is missing or stale, restore from git history.
+
+---
+
+## 0. What this project is
+
+SheetSubmit is an account manager (Facebook cookies, 2FA keys, account checks) delivered as:
+a web SPA, an Android WebView app, and a floating-bubble mini-window (Android).
+
+Two codebases exist:
+
+| Repo | Path | Stack | Role |
+|---|---|---|---|
+| **Old (production)** | `B:\Studio\Tools\SheetSubmit` | Vanilla JS SPA + Express 4 + Redis (ioredis) + Android WebView/bubble | Live app. **Behavioral source of truth** — port behavior, don't redesign. Git tag `pre-shadcn` exists here (local only, NOT pushed). Its `AGENTS.md` covers the Android APK build/install flow — applies to that repo only. |
+| **New (this repo)** | `B:\Studio\Tools\SheetSubmit-Shadcnui` | React 19 + TS + Vite + Tailwind v4 + shadcn/ui (frontend); TS Express (backend, in progress) | The rewrite. Old app stays live until parity is proven, then Express serves the new build. |
+
+**Goal:** exact-same-or-better UI (Geist tokens, pixel parity verified by screenshots) + a
+TypeScript backend with best practices, **identical API contract and Redis key shapes** so
+existing users/files survive and the old frontend keeps working during migration.
+
+---
+
+## 1. New repo layout
+
+```
+SheetSubmit-Shadcnui/
+├── package.json          # npm workspaces (apps/*, packages/*); scripts: dev:web, dev:server, build, typecheck
+├── PLAN.md               # ← this file
+├── AGENTS.md             # agent rules — points here
+├── apps/
+│   └── web/              # Vite 8 + React 19 + TS 6 + Tailwind v4 + shadcn
+│       ├── components.json           # shadcn config (Nova preset, radix, lucide)
+│       ├── public/                   # logo-{light,dark}.svg, favicon-{light,dark}.svg (copied from old repo)
+│       └── src/
+│           ├── index.css             # Tailwind + shadcn theme + ported Geist tokens (light/dark)
+│           ├── App.tsx               # shell: topbar (logo, theme toggle) + empty home
+│           ├── main.tsx
+│           ├── lib/                  # theme.ts, api.ts (typed client), types.ts, utils.ts
+│           ├── contexts/             # AuthContext.tsx        (stub — Phase 2)
+│           ├── stores/               # sheetStore.ts, filesStore.ts (stubs)
+│           ├── hooks/                # useDebounce, usePersist, useUndoRedo, useCheck (stubs)
+│           ├── components/           # ui/button.tsx; layout/Topbar.tsx;
+│           │                         # home/FileCard,FileGrid,Fab,EmptyState,ArchiveView,AdminView;
+│           │                         # sheet/SheetGrid,CellEditor,QuickEditBar,VersionHistory,DiffView;
+│           │                         # bubble/BubbleMode  (all stubs except ui/button)
+│           ├── pages/                # HomePage, SheetPage, AdminPage (stubs)
+│           └── features/filetypes/   # totp.ts, validation.ts (stubs)
+├── apps/
+│   └── server/           # TS Express backend (Phase 1 — NOT started)
+│       ├── package.json  # deps listed but NOT installed yet
+│       ├── tsconfig.json
+│       └── src/          # index.ts, app.ts, config/env.ts,
+│                         # middleware/{auth,error,logging}.ts,
+│                         # routes/{auth,files,cells,history,admin,wa,bot}.ts,
+│                         # services/{redis,files,backup,telegram}.ts, lib/{ids,json}.ts — all empty stubs
+└── packages/
+    └── shared/           # @sheetsubmit/shared — domain types (File, Row, FileType) — populated
+```
+
+---
+
+## 2. Stack & decisions (locked)
+
+- **Package manager:** `bun` (1.3.x). **Monorepo:** plain npm workspaces — nothing heavier.
+- **Frontend:** Vite 8, React 19, TypeScript ~6.0, Tailwind v4 (CSS-first, no config file),
+  shadcn/ui **Nova preset** (radix primitives, lucide-react icons, Geist Variable font),
+  `react-router` + `zustand` (installed, **not wired yet**), SheetJS for xlsx (later).
+- **Dark mode:** `.dark` class on `<html>` (`@custom-variant dark` in index.css); theme
+  toggle persists `ss_theme` in localStorage; favicon swaps per theme (matches old app).
+- **Tokens:** Geist values from old `css/base.css` ported into shadcn CSS variables —
+  including fixes: real `--green: #16a34a`, `--cyan: #00b4d8`, `--amber: #f59e0b`,
+  `--brand: #0070f3`, `--radius: 0.375rem` (6px).
+- **Backend (planned):** Express 4 + ioredis + dotenv + zod. Port `server/index.js`
+  (~1,900 lines) into modules with **identical API contract, status codes, and Redis keys**.
+  No data migration.
+- **Type sharing:** `@sheetsubmit/shared` workspace package consumed by web + server.
+
+---
+
+## 3. Phases & status
+
+| Phase | Status | Commit / notes |
+|---|---|---|
+| **0 — Scaffold** (Vite+shadcn monorepo, tokens, theme, build boots) | ✅ Done | `e7eedb5` |
+| **0b — Logos + full skeleton** (public SVGs wired, shared pkg, server + web stubs) | ✅ Done | `957b5e2` |
+| **1 — Backend TS port** (install server deps; split `server/index.js` into modules; old frontend must run against new server unchanged) | ⬜ **NEXT** | — |
+| **2 — Auth + Home** (device login, file grid, FAB, archive, admin; screenshots == old) | ⬜ | — |
+| **3 — Sheet engine** (grid, editing, undo/redo, persist, quick-edit bar; custom table + memo/virtualization) | ⬜ | — |
+| **4 — Checks, versions, data ops** (check/auto-check, WA cache, history modal + diff, merge/replace xlsx, download) | ⬜ | — |
+| **5 — Bubble (Android)** (`?bubble=1&file=` mode, clipboard automation, 6s refresh, bundle size) | ⬜ | — |
+| **6 — Polish & swap** (dark-mode audit, a11y, serve `dist/`, delete old frontend, Android re-verify) | ⬜ | — |
+
+---
+
+## 4. Handoff — where we left off & how to resume from any state
+
+### Last state (as of last update)
+- New repo has 2 commits: `e7eedb5` (Phase 0), `957b5e2` (logos + skeleton).
+- `apps/web` builds (`bun run build` passes); dev/preview verified in Playwright
+  (shell renders, theme toggle works, logo/favicon swap, no console errors).
+- **Nothing in Phase 1–6 is started.** Server deps are **not installed**.
+
+### Resume recipe (any session/AI, from any state)
+1. Read this file (you are here). Read `AGENTS.md` for rules.
+2. Assess actual state — do not trust memory:
+   ```bash
+   cd /b/Studio/Tools/SheetSubmit-Shadcnui
+   git log --oneline            # what commits exist
+   git status --short           # uncommitted work
+   ls apps/server/node_modules 2>/dev/null || echo "server deps NOT installed"
+   bun run --cwd apps/web build # does the web app still compile?
+   ```
+3. In the phase table above, pick the first ⬜ phase → that is the next task.
+4. Do the work, verify per that phase's done-criteria (below), commit with a
+   `Phase N: …` message, then **update this file** (status, commit hash, new gotchas).
+5. Never leave this file stale — it is the only continuity guarantee.
+
+### Done-criteria per phase
+- **Phase 1:** `tsc` clean; every endpoint in old `server/index.js` exists in TS with same
+  path/shape/status; old vanilla frontend (run with `bun run` from the old repo, pointing at
+  the new server) passes a manual click-through; Redis keys byte-identical.
+- **Phase 2:** user can log in (device login), see files, create/rename/archive/delete;
+  screenshot diff vs old app ≈ identical.
+- **Phase 3:** open a real file → edit → undo/redo → reload → changes persist; grid pixels match.
+- **Phase 4:** check/auto-check/WA cache, version history + diff + restore/fork/name,
+  merge/replace xlsx, download xlsx — all work like the old app.
+- **Phase 5:** bubble opens in the mini WebView, clipboard automation (cookie → 2FA → TOTP)
+  works on device, boot time acceptable, bundle code-split.
+- **Phase 6:** old `index.html`/`js/`/`css/` deleted; Express serves new `dist/`; Android
+  WebView + bubble re-verified.
+
+---
+
+## 5. Commands
+
+```bash
+# From the new repo root (B:\Studio\Tools\SheetSubmit-Shadcnui)
+bun install                              # after any workspace/package.json change
+bun run dev:web                          # Vite dev server (apps/web)
+bun run build                            # typecheck + build web app → apps/web/dist
+bun run typecheck                        # web typecheck (server typecheck needs deps installed)
+bun run dev:server                       # Phase 1+: bun --watch apps/server/src/index.ts
+
+# shadcn component add (Phase 2+):
+cd apps/web && npx shadcn@latest add <component> -y
+# ⚠️ CAVEAT: in this monorepo the CLI writes to a literal "apps/web/@/" folder —
+# move files from @/components/ui/* and @/lib/* into src/ (see Gotchas).
+
+# Old repo (reference/behavior source):
+cd /b/Studio/Tools/SheetSubmit && bun run   # starts old Express server
+```
+
+---
+
+## 6. Gotchas & decisions log (append as you discover)
+
+- **shadcn CLI (2026) changed flags:** `-b` is now the primitive library (`radix|base|aria`),
+  not base color. Non-interactive init used: `npx shadcn@latest init -t vite -b radix -p nova -y --css-variables -f --reinstall`.
+- **shadcn writes to a literal `@/` dir in this monorepo** (workspace-config detection bug).
+  After any `shadcn add`, move `apps/web/@/components/ui/*` → `apps/web/src/components/ui/`
+  and `apps/web/@/lib/*` → `apps/web/src/lib/`, then delete `apps/web/@`. (Do NOT skip this —
+  imports use `@/` alias which maps to `./src`.)
+- **TypeScript ~6.0 deprecates `baseUrl`** — use `paths` only (already done in tsconfigs).
+- **Server deps are listed in `apps/server/package.json` but NOT installed.** `bun install`
+  at root will install them when Phase 1 starts.
+- **`react-router` + `zustand` are installed but unwired** — wire in Phase 2.
+- **`pre-shadcn` git tag** on the old repo is local-only; needs `git push origin pre-shadcn`
+  (requires user permission).
+- **Old repo tooling dir `.freebuff/` is gitignored** — local data, never commit.
+- **API contract rule:** the new server must not rename/move endpoints or Redis keys. When
+  porting a handler, diff old behavior first (`B:\Studio\Tools\SheetSubmit\server\index.js`).
+- Token fixes already applied vs old app: real green/cyan/amber split; `--brand` blue; all
+  old hardcoded hex (`#000/#fff/#cc0000/#16a34a/…`) to be replaced by tokens in Phase 6 polish.
+
+---
+
+## 7. Porting reference — old app essentials
+
+Old repo: `B:\Studio\Tools\SheetSubmit` (vanilla, IIFE modules on `window.__ss`, no build).
+
+| Old file | What it does / port notes |
+|---|---|
+| `server/index.js` (~1,900 ln) | Express + ioredis. Auth (device login → session cookie), files CRUD, rows/persist/cell, logs/undo, cross-dups, history/versions (snapshot engine, diff, fork/restore/name), fb check proxy (`/api/fb/check`), WA check (`/api/fb/wa-check` + `ss:wa:` cache), admin twins, Telegram bot (device-login binding), backup loop. Port to `apps/server/src/**` with API parity. |
+| `server/backup.js` | Redis backup/restore loop → `services/backup.ts`. |
+| `js/api.js` | Full endpoint list + shapes → typed client in `apps/web/src/lib/api.ts` (partial). |
+| `js/types.js` | File types — only `fb_cookie` remains (IG removed). Moved to `packages/shared`. |
+| `js/home.js` (~900 ln) | Home grid, FAB create, xlsx import (SheetJS), archive, admin panel → Phase 2. |
+| `js/sheet.js` (~2,230 ln) | The grid engine: render, cell edit, quick-edit bar, tap-hold, selection, undo/redo (server round-trip), persist (debounced 300ms), check/auto-check, WA cache, version modal + diff, merge/replace, download → Phase 3–4. Highest risk. |
+| `js/app.js` | Auth check, health polling, deep-link `file/<id>` restore → Phase 2. |
+| `js/bubble.js` (~330 ln) | Android-only: gear rows, bubble picker, `?bubble=1&file=` mini mode, clipboard automation (cookie→2FA→TOTP), 6s refresh → Phase 5. |
+| `js/filetypes/fbcookie.js` | Validation + TOTP (WebCrypto SHA-1) + `checkAccounts` → `features/filetypes/`. |
+| `android/` | WebView wrapper + `Android` JS bridge + ClipboardCaptureActivity + FloatingBubbleService. **Untouched** during migration; must keep working against the new build. |
+| `design.md`, `css/*` | Geist design system (tokens already ported; `design.md` is the visual spec). |
+
+Key behaviors to preserve: cookie-based sessions (no localStorage tokens); bubble clipboard
+indirection via ClipboardCaptureActivity (Android 10+); undo/redo via `ss:undo`/`ss:redo`
+server round-trips; 100-row pad in the sheet; `fb_cookie` = only file type; WA eligibility
+cache `ss:wa:<c_user>` survives file deletion.
+
+---
+
+## 8. Overall done criteria (exit checklist)
+
+- [ ] New server (TS) passes all old-API parity checks; Redis keys unchanged.
+- [ ] New frontend matches old UI pixel-for-pixel (screenshot diffs) or better.
+- [ ] All features work: login, files, sheet editing + undo/redo, checks, versions,
+      xlsx import/export, admin, bubble (Android).
+- [ ] Dark mode + toasts + empty states + a11y pass.
+- [ ] Express serves the new build; old `index.html`/`js/`/`css/` deleted from the old repo.
+- [ ] Android APK rebuilt & re-verified (WebView + bubble) via the old repo's CI flow.
+- [ ] This file updated: all phases ✅, gotchas logged, final commit hash recorded.
