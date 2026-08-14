@@ -116,7 +116,7 @@ SheetSubmit-Shadcnui/
 ## 4. Handoff — where we left off & how to resume from any state
 
 ### Last state (as of last update)
-- **Post-Phase-6 user-feature batch (commit `…`):**
+- **Post-Phase-6 user-feature batch (commit `b6cdf0e`):**
   - **WA check dots update INSTANTLY per row** — `runWaChecks` now pushes each individual live-check result to the store as it resolves (immutable row replace + `set`), so the dot flips green the moment that row's check finishes; the final `persist()` still happens once at the end. Cache hits still apply up-front in one set.
   - **Check no longer creates undo/redo entries or version snapshots** — `runCheck` dropped its `{type:"rows", prevRows}` undo push AND its `persist("check")` action (now plain `persist()`), per explicit user request. Statuses still save; nothing to revert.
   - **Upload on an EMPTY file is now undoable** — `applyUpload` (replace AND append) pushes a rows-undo snapshot when `lastDataIdx === -1` (no data rows) instead of wiping undo/redo; non-empty files keep the old clear-both-stacks parity.
