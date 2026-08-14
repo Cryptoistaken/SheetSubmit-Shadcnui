@@ -28,7 +28,7 @@ export interface SheetFile {
 }
 
 /** A grid row — cookie cells are plain string keys. */
-export type Row = Record<string, string | undefined>;
+export type Row = Record<string, string | null | undefined>;
 
 export const FILE_TYPE_DEFS: Record<FileType, FileTypeDef> = {
   fb_cookie: {

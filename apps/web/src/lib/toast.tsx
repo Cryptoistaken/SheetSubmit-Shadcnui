@@ -1,4 +1,11 @@
-import { createContext, useCallback, useContext, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import type { ReactNode } from "react";
 
 interface ToastContextValue {
@@ -6,6 +13,16 @@ interface ToastContextValue {
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
+
+let toastFn: ((msg: string) => void) | null = null;
+
+export function setToastFn(fn: ((msg: string) => void) | null) {
+  toastFn = fn;
+}
+
+export function toast(msg: string) {
+  toastFn?.(msg);
+}
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [message, setMessage] = useState("");
@@ -18,6 +35,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setShow(true);
     timer.current = setTimeout(() => setShow(false), 2000);
   }, []);
+
+  useEffect(() => {
+    setToastFn(showToast);
+    return () => setToastFn(null);
+  }, [showToast]);
 
   return (
     <ToastContext.Provider value={{ showToast }}>

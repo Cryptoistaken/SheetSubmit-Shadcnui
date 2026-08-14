@@ -21,3 +21,6 @@ Thumbs.db
 
 # Misc
 *.tsbuildinfo
+
+# Playwright MCP artifacts (screenshots/snapshots — local only, never commit)
+.playwright-mcp/

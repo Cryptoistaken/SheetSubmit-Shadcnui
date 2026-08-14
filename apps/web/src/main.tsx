@@ -6,6 +6,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { ConfirmProvider } from "@/lib/confirm";
 import { ToastProvider } from "@/lib/toast";
 import "./index.css";
+import "./bones/registry";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

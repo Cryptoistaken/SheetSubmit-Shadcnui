@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 
+import SheetToolbar from "@/components/sheet/SheetToolbar";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
+import { useSheetStore } from "@/stores/sheetStore";
 
 interface ConnState {
   cls: "ok" | "err" | "";
@@ -15,6 +17,7 @@ export default function Topbar() {
   const { theme, toggle } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
+  const file = useSheetStore((s) => s.file);
 
   const [conn, setConn] = useState<ConnState>({ cls: "", text: "Connecting..." });
   const [panelOpen, setPanelOpen] = useState(false);
@@ -77,6 +80,11 @@ export default function Topbar() {
 
   const isFilePage = location.pathname.startsWith("/file/");
   const displayName = ((user.firstName ?? "") + " " + (user.lastName ?? "")).trim();
+  const fileName = file
+    ? file.name.length > 10
+      ? file.name.substring(0, 10) + "…"
+      : file.name
+    : "";
 
   const logout = () => {
     api.logout().then(() => window.location.reload());
@@ -97,9 +105,15 @@ export default function Topbar() {
         >
           <span className="back-btn-chevron">{"\u2039"}</span>
         </button>
-        <button className="sheet-title-btn" title="Rename file"></button>
+        <button
+          className={"sheet-title-btn" + (isFilePage ? " visible" : "")}
+          title={file ? file.name : "Rename file"}
+        >
+          {fileName}
+        </button>
       </div>
       <div className="topbar-r">
+        {isFilePage && <SheetToolbar />}
         <span className={`conn-status${conn.cls ? " " + conn.cls : ""}`}>
           <span className="conn-status-dot"></span>
           <span>{conn.text}</span>

@@ -1276,3 +1276,522 @@ button, input, select, textarea {
     .admin-file-list { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
     .admin-detail-header { flex-direction: column; align-items: flex-start; }
 }
+
+/* ── Sheet grid (ported from old app) ── */
+
+/* ── Sheet wrap ── */
+.sheet-wrap {
+    flex: 1;
+    overflow: auto;
+    overscroll-behavior: contain;
+    background: var(--bg);
+}
+
+table.grid tbody tr { content-visibility: auto; contain-intrinsic-size: 36px; }
+
+/* ── Grid table ── */
+table.grid {
+    border-collapse: collapse;
+    table-layout: fixed;
+    width: 100%;
+    user-select: none;
+}
+
+table.grid th,
+table.grid td {
+    border: 1px solid var(--border);
+}
+
+table.grid th.corner {
+    width: 36px;
+    min-width: 36px;
+    background: var(--bg2);
+    position: sticky;
+    left: 0;
+    top: 0;
+    z-index: 5;
+}
+
+table.grid th.rh {
+    width: 36px;
+    min-width: 36px;
+    background: var(--bg2);
+    font-size: 11px;
+    color: var(--text3);
+    font-weight: 400;
+    text-align: center;
+    height: 32px;
+    position: sticky;
+    left: 0;
+    z-index: 4;
+    cursor: default;
+    transition: background 0.1s;
+    user-select: none;
+}
+
+table.grid th.ch {
+    background: var(--bg2);
+    font-size: 12px;
+    color: var(--text2);
+    font-weight: 600;
+    text-align: center;
+    height: 36px;
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    overflow: hidden;
+    letter-spacing: -0.01em;
+}
+
+table.grid th.ch-dot {
+    width: 36px;
+    min-width: 36px;
+    background: var(--bg2);
+    font-size: 11px;
+    color: var(--text3);
+    text-align: center;
+    height: 36px;
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    transition: background 0.1s;
+}
+
+table.grid th.ch-dot:hover {
+    background: var(--bg3);
+}
+
+table.grid td.dc {
+    height: 36px;
+    padding: 0;
+    font-size: 13px;
+    font-family: var(--mono);
+    vertical-align: middle;
+    background: var(--bg);
+    overflow: hidden;
+    touch-action: pan-x pan-y;
+    contain: layout style paint;
+}
+
+table.grid td.dc .cell-inner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 8px;
+    height: 100%;
+}
+
+table.grid td.dc .cell-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    pointer-events: none;
+    text-align: center;
+    color: var(--text);
+}
+
+td.dc.dup-cell {
+    background: var(--yellow-bg) !important;
+}
+
+td.dc.cookie-invalid {
+    background: var(--red-bg) !important;
+    cursor: pointer !important;
+}
+
+td.dc.cookie-invalid .cell-text {
+    color: var(--red) !important;
+}
+
+table.grid td.dot-cell {
+    width: 36px;
+    min-width: 36px;
+    text-align: center;
+    vertical-align: middle;
+    background: var(--bg);
+    cursor: pointer;
+    contain: layout style paint;
+}
+
+table.grid td.dot-cell:hover {
+    background: var(--bg3);
+}
+
+.row-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--border2);
+    display: inline-block;
+    transition: none;
+}
+
+.row-dot.d-blue { background: var(--cyan); }
+.row-dot.d-green { background: var(--green); }
+.row-dot.d-yellow { background: var(--yellow); }
+.row-dot.d-red { background: var(--red); }
+
+.row-dot.d-spin {
+    background: var(--blue);
+    animation: pulse 1s ease-in-out infinite;
+    will-change: opacity;
+}
+
+tr.add-row td {
+    background: var(--bg2) !important;
+    border-color: var(--border) !important;
+    cursor: pointer;
+    padding: 14px 0;
+    transition: background 0.1s;
+}
+
+tr.add-row td:hover {
+    background: var(--bg3) !important;
+}
+
+td.rh-add {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text2);
+    text-align: center;
+    position: sticky;
+    left: 0;
+    background: var(--bg2) !important;
+    z-index: 4;
+    letter-spacing: -0.01em;
+}
+
+/* ── Selection states ── */
+td.dc.ms-sel {
+    background: var(--sel-bg) !important;
+    outline: 1px solid var(--sel-border);
+    outline-offset: -1px;
+}
+
+th.ch.col-sel {
+    background: var(--sel-bg) !important;
+    color: var(--blue) !important;
+    font-weight: 600 !important;
+}
+
+th.rh.row-sel {
+    background: var(--sel-bg) !important;
+    color: var(--blue) !important;
+    font-weight: 600 !important;
+}
+
+th.ch:not(.corner):not(.ch-dot) {
+    cursor: default;
+    transition: background 0.1s, color 0.1s;
+}
+
+th.ch:not(.corner):not(.ch-dot):hover {
+    background: var(--bg3) !important;
+    color: var(--text) !important;
+}
+
+th.rh {
+    cursor: default !important;
+}
+
+th.rh:hover {
+    background: var(--bg3) !important;
+    color: var(--text2) !important;
+}
+
+/* ── Cell states (components.css) ── */
+.cell-dup { background: rgba(255, 160, 0, 0.15) !important; border-color: #ffa000 !important; }
+
+.cell-invalid { background: rgba(255, 68, 68, 0.1) !important; border-color: #ff4444 !important; }
+
+.spin-icon {
+    animation: spin 0.7s linear infinite;
+    display: inline-block;
+    will-change: transform;
+}
+
+/* ── Undo / redo buttons ── */
+.undo-redo-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--r);
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text3);
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s, border-color 0.1s;
+    flex-shrink: 0;
+}
+
+.undo-redo-btn:hover:not(:disabled) {
+    background: var(--bg3);
+    color: var(--text);
+    border-color: var(--border);
+}
+
+.undo-redo-btn:active:not(:disabled) {
+    transform: scale(0.97);
+}
+
+.undo-redo-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+/* ── Quick edit bar (qeb) ── */
+.qeb-bar {
+    position: fixed;
+    z-index: 600;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    display: none;
+    align-items: center;
+    padding: 4px 4px 4px 12px;
+    gap: 4px;
+    box-shadow: var(--shadow-lg);
+    min-width: 0;
+    max-width: calc(100vw - 16px);
+    left: 8px;
+    bottom: 5vh;
+    right: 8px;
+}
+
+.qeb-bar.open {
+    display: flex;
+}
+
+.qeb-input {
+    flex: 1;
+    border: none;
+    outline: none;
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text);
+    background: transparent;
+    padding: 6px;
+    min-width: 0;
+}
+
+.qeb-input::placeholder {
+    color: var(--text3);
+}
+
+.qeb-right {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.qeb-chip {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--blue);
+    background: var(--blue-light);
+    padding: 2px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    font-family: var(--mono);
+    text-transform: uppercase;
+    letter-spacing: -0.01em;
+}
+
+.qeb-paste-btn {
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text2);
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    cursor: pointer;
+    transition: background 0.1s;
+    white-space: nowrap;
+}
+
+.qeb-paste-btn:hover {
+    background: var(--bg4);
+    color: var(--text);
+}
+
+.qeb-paste-btn:active {
+    transform: scale(0.98);
+}
+
+.qeb-icon-btn.save {
+    background: #000;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: var(--r);
+    width: auto;
+    padding: 0 12px;
+    height: 28px;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.1s;
+}
+
+.dark .qeb-icon-btn.save {
+    background: #fff;
+    color: #000;
+}
+
+.qeb-icon-btn.save:active {
+    transform: scale(0.98);
+}
+
+.cell-editing {
+    box-shadow: inset 0 0 0 2px var(--blue) !important;
+}
+
+/* ── Sheet more menu ── */
+.sheet-more-sep { height: 1px; background: var(--border); margin: 4px 8px; }
+
+.sheet-more-col-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text);
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.08s;
+}
+
+.sheet-more-col-item:hover { background: var(--bg3); }
+
+.sheet-more-col-item .col-toggle {
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+    border: 1.5px solid var(--border2);
+    background: var(--bg);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.12s, border-color 0.12s;
+}
+
+.sheet-more-col-item .col-toggle.on { background: var(--blue); border-color: var(--blue); }
+
+.sheet-more-col-item .col-toggle.on::after {
+    content: '';
+    width: 5px;
+    height: 9px;
+    border: solid #fff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+    margin-top: -1px;
+}
+
+.sheet-more-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--r);
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text3);
+    font-size: 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.1s, color 0.1s;
+    flex-shrink: 0;
+    padding: 0;
+    letter-spacing: 2px;
+}
+
+.sheet-more-btn:hover { background: var(--bg3); color: var(--text); border-color: var(--border); }
+
+.sheet-more-menu {
+    position: fixed;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--rl);
+    box-shadow: var(--shadow-lg);
+    z-index: 600;
+    min-width: 160px;
+    padding: 4px;
+    display: none;
+}
+
+.sheet-more-menu.open { display: block; animation: smIn 0.12s var(--ease-out); }
+
+.sheet-more-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--text);
+    transition: background 0.08s;
+    white-space: nowrap;
+    width: 100%;
+    border: none;
+    background: none;
+    text-align: left;
+}
+
+.sheet-more-item:hover { background: var(--bg3); }
+
+/* ── Context / log popup ── */
+.file-ctx-popup {
+    position: fixed;
+    z-index: 800;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--rl);
+    padding: 4px;
+    width: 140px;
+    box-shadow: var(--shadow-lg);
+    transform: translateY(4px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s, transform 0.12s;
+}
+
+.file-ctx-popup.open { opacity: 1; pointer-events: all; transform: translateY(0); }
+
+.file-ctx-item {
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    color: var(--text);
+    border-radius: 4px;
+    transition: background 0.08s;
+}
+
+.file-ctx-item:hover { background: var(--bg3); }
+
+.file-ctx-item.danger { color: var(--red); }
+
+.file-ctx-item.danger:hover { background: var(--red-bg); }
+
+/* ── Keyframes used by grid dots / spinners ── */
+@keyframes pulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
