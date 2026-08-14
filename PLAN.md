@@ -92,7 +92,7 @@ SheetSubmit-Shadcnui/
 | **1 — Backend TS port** (install server deps; split `server/index.js` into modules; old frontend must run against new server unchanged) | ✅ Done | `b2f353d` |
 | **2 — Auth + Home** (device login, file grid, FAB, archive, admin; screenshots == old) | ✅ Done | `b67be36` |
 | **3 — Sheet engine** (grid, editing, undo/redo, persist, quick-edit bar; custom table + memo/virtualization; boneyard skeleton loading) | ✅ Done | `6becf75` |
-| **4 — Checks, versions, data ops** (check/auto-check, WA cache, history modal + diff, merge/replace xlsx, download) | ⬜ | — |
+| **4 — Checks, versions, data ops** (check/auto-check, WA cache, history modal + diff, merge/replace xlsx, download) | ✅ Done | `4cfacf2` |
 | **5 — Bubble (Android)** (`?bubble=1&file=` mode, clipboard automation, 6s refresh, bundle size) | ⬜ | — |
 | **6 — Polish & swap** (dark-mode audit, a11y, serve `dist/`, delete old frontend, Android re-verify) | ⬜ | — |
 
@@ -101,6 +101,50 @@ SheetSubmit-Shadcnui/
 ## 4. Handoff — where we left off & how to resume from any state
 
 ### Last state (as of last update)
+- **Phase 4 (Checks, versions, data ops) complete — commit `4cfacf2`** (plus `52bcf11`
+  chore: removed unused Vite/shadcn scaffold `favicon.svg`/`icons.svg`):
+  - **WA check flow wired** (old `runWaChecks`): `sheetStore.runWaChecks()` — fires after
+    `runCheck()` when `ss_waCheck === "true"` (fb_cookie only); eligibility
+    `status==='good' && wa_status!=='eligible' && c_user in cookies`; cache pre-filter via
+    `GET /api/wa/cache` (hits apply `wa_status`/`wa_ban_reason`); live checks concurrency 3
+    via `POST /api/fb/wa-check`; `persist()` with NO action — **parity note:** when WA runs
+    after a check, the debounced persist loses the `'check'` action, so NO version snapshot
+    is created (exact old-app behavior — the last `persist()` wins in the shared 300ms timer).
+  - **Version history modal** (`VersionHistory.tsx`, shadcn-free ported-CSS overlay):
+    grouped-by-day list (`.version-day-group.open`), 50/page pager (`← Prev`/`Next →`),
+    per-item: name+rename (Enter/blur commit, Escape cancel), time (`14 Aug 2026, 20:56
+    (just now)`), summary (client-side from dedup-key diff — same approximate behavior as
+    old: fetched lazily, falls back to `Same row count` etc.), detail (`Added +N rows · M
+    rows`), badge (`[New]`/`[±Δ]` + action label; `.restore`/`.replace` classes), buttons
+    Copy version / Preview / Restore. Preview = inline `DiffView` (row-level diff keyed by
+    dedup uid; `vline add/del/ctx` + stats bar + hunk header; one preview open at a time).
+    Restore → confirm → `POST history/:v/restore` → store sets rows (pad 100) + rows-undo
+    snapshot, NO persist (server already stored; old parity). Fork → confirm → navigate to
+    `/file/<newId>`. Version rows cached per-file in `stores/versionCache.ts` (old app's
+    module cache leaked across files — fixed).
+  - **Download xlsx** (`DownloadOverlay.tsx` + `downloadSheetRows`): fb_cookie shows the
+    filter chooser (All/Alive/Cookie+2FA/Only Cookie/Only 2FA/FB Page/No Page/Dead with
+    live counts, buttons only when count>0); uid column EXCLUDED, no header row, filename
+    `<name><suffix> [N].xlsx`; toasts `No data to download` / `Downloaded`.
+  - **Upload/Merge** (`UploadOverlay.tsx` + `parseSheetRows` + store `mergeRows`/
+    `applyUpload`): hidden file input in SheetToolbar; header detection (col key/label vs
+    positional), `c_user`→uid derivation; Merge = dedup-by-uid append + `persist('merge')`
+    + cross-dup refetch + rows-undo snapshot; Upload → Replace (confirm `**permanently
+    replaced**`, clears undo/redo, pads 100, `persist('replace')`) / Append (no dedup,
+    clears undo/redo, `persist('append')`); toasts `Merged N (skipped M)` / `Replaced with
+    N rows` / `Appended N rows`.
+  - **Log popup** now includes cross-file-dup section (yellow ⚠ + `NAME (row N)`) and WA
+    section (`✓ FB Page` green when eligible / `⚠ reason`) via extended `onDotHold` return.
+  - **Home xlsx import** now hydrates WA cache (`hydrateWaCache`) before createFile/persist
+    (old home.js behavior).
+  - **Deleted** dead `hooks/useCheck.ts` stub (never imported).
+  - Verified: web+server `tsc` clean, `bun run --cwd apps/web build` clean; API smoke on
+    throwaway Redis (:6390): history snapshots (check/merge actions), version get/restore/
+    name/fork, WA cache read, cross-dups — all correct shapes. **Browser-verified by the
+    user**: menu items render, version modal list/badges/pager, preview diff, download
+    overlay. Smoke server still running for the user on **:3999** (temp `.env`,
+    `PORT=3999`/`REDIS_URL=redis://localhost:6390`), Redis container `ss-smoke-redis` up
+    with 3 versions on file `smoke` (incl. a `Restore` snapshot from my test).
 - **Phase 3 fixes round 2 — commit `974fccb`:** user-reported issues fixed:
   - **Grid layout broken (headers/cells misaligned, ~65% empty, content-sized columns):** ROOT CAUSE — the `<table className="grid">` collides with **Tailwind v4's on-demand `.grid { display: grid }` utility**. The table became `display: grid`, which makes `table-layout: fixed` inert (computed style still reports "fixed" — misleading) and thead/tbody become independent anonymous tables sized by content. FIX: `display: table` added to the `table.grid` rule in app.css (unlayered, beats the layered Tailwind utility). The old app had no Tailwind so `class="grid"` was inert there. **Gotcha: never rename `table.grid` without keeping `display: table`, and don't add Tailwind's `grid` class to anything that must be a table.** Verified live: columns now equal-width (36|109|109|109|36) and headers align with cells. (The stale `ss_cols_smoke=["uid"]` one-column state was the user's own toggle testing — not a bug.)
   - **Check button looked wrong:** it showed AMBER text (`.warning` = duplicates state, from the dup rows in the smoke file). Removed the amber warning from the button — always white-on-blue now.
@@ -368,6 +412,41 @@ cd /b/Studio/Tools/SheetSubmit && bun run   # starts old Express server
   `fallback` prop, so runtime is safe pre-capture. `apply: "serve"` only — capture
   happens on the dev server, never during `vite build`. Grid skeleton bones are
   deterministic (36px rows) so a hand-authored `.bones.json` is a valid fallback.
+- **Phase 4 overlay pattern (decision):** version modal, download chooser and
+  upload-mode modal use the PORTED old-app CSS classes (`.modal-overlay`/`.modal-box`,
+  `.version-*`, `.vdiff-*`, `.download-opt-*`) — NOT shadcn Dialog. Rationale: the
+  Phase-2/3 codebase already uses `.modal-overlay`/`.modal-box` (confirm.tsx, HomePage,
+  Topbar), and the old DOM/CSS ports give byte-parity markup + pixel parity for free
+  (shadcn Dialog would need full re-styling anyway). This deviates from the earlier
+  gotcha suggestion ("Phase 4+ overlays should use shadcn Dialog") — the old-app-specific
+  widgets fall under that gotcha's own ported-CSS exception.
+- **`#versionOverlay .modal-box` width gotcha:** the old CSS has `width: 440px;
+  max-width: calc(100vw - 40px)` for the version modal box. The Phase-4 CSS port
+  (subagent) MISSED this rule (only ported `.vdiff*` selectors under `#versionOverlay`),
+  and the version list renders at the default 320px `.modal-box` width without it. It was
+  added manually to app.css — if someone re-runs a CSS port, do NOT drop it.
+- **Version rename fix over old app:** old `startVersionRename` re-rendered the list from
+  the STALE `_versionMeta` (ignored the server's returned meta) so the new name only
+  appeared after reopening the modal. New app updates `meta` from the API response
+  (`nameVersion` returns `{ok, meta}`) — same-or-better, deliberate deviation.
+- **WA-after-check version behavior (parity):** because `persist()` is a shared 300ms
+  debounce where the LAST call's action wins, running WA checks after a check silently
+  drops the `'check'` action (no version snapshot). This is EXACTLY the old app's
+  behavior (old `runWaChecks` also calls `persist()` afterwards). Do not "fix" this
+  without re-checking the old app's history.
+- **`Row` type + WA fields:** `Row` is `Record<string, string | null | undefined>` so
+  `wa_status`/`wa_ban_reason` ride along freely; `wa_ban_reason` is `null` when absent
+  (real data has `null` — the widened type already handles it).
+- **Version rows cache** lives in `stores/versionCache.ts`, keyed per `fileId` (old app
+  cached per version number globally and could show another file's rows — fixed silently).
+  `dedupKeyForRow` is exported from `sheetStore.ts` (used by merge, summaries, diff).
+- **Smoke env for Phase 4+:** server runs on `:3999` (temp repo-root `.env`:
+  `PORT=3999`, `REDIS_URL=redis://localhost:6390`; gitignored) serving latest
+  `apps/web/dist`. Redis container `ss-smoke-redis` (:6390) has session `smoke` (user
+  `smoke1`, admin), file `smoke` with 2 data rows + 3 history versions. Login: devtools
+  cookie `session=smoke` for `localhost`. Stop later: kill PID from
+  `Get-CimInstance Win32_Process | where CommandLine -match "server/src/index.ts"`,
+  `docker rm -f ss-smoke-redis`, delete `.env`.
 
 ---
 
