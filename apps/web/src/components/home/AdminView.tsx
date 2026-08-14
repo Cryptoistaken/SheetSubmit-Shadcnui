@@ -191,6 +191,7 @@ export default function AdminView() {
                   <button
                     className="file-card-btn admin-file-dl"
                     title="Download"
+                    aria-label="Download"
                     onClick={(e) => {
                       e.stopPropagation();
                       downloadFile(f.id, f.name);
@@ -201,6 +202,7 @@ export default function AdminView() {
                   <button
                     className="file-card-btn admin-file-rename"
                     title="Rename"
+                    aria-label="Rename"
                     onClick={(e) => {
                       e.stopPropagation();
                       openRename(f.id, f.name);
@@ -211,6 +213,7 @@ export default function AdminView() {
                   <button
                     className="file-card-btn admin-file-del file-card-del"
                     title="Delete"
+                    aria-label="Delete"
                     onClick={(e) => {
                       e.stopPropagation();
                       removeFile(f.id);
@@ -259,6 +262,7 @@ export default function AdminView() {
                       <button
                         className="file-card-btn admin-archive-restore"
                         title="Restore"
+                        aria-label="Restore"
                         onClick={(e) => {
                           e.stopPropagation();
                           restoreArchived(f.id);
@@ -269,6 +273,7 @@ export default function AdminView() {
                       <button
                         className="file-card-btn admin-archive-del file-card-del"
                         title="Delete permanently"
+                        aria-label="Delete permanently"
                         onClick={(e) => {
                           e.stopPropagation();
                           deleteArchived(f.id);
@@ -295,6 +300,7 @@ export default function AdminView() {
             <input
               className="modal-input"
               type="text"
+              aria-label="File name"
               value={renameName}
               autoFocus
               onFocus={(e) => e.currentTarget.select()}
@@ -339,6 +345,7 @@ export default function AdminView() {
           type="text"
           className="admin-search-input"
           placeholder="Search users..."
+          aria-label="Search users"
           autoComplete="off"
           value={search}
           onChange={(e) => onSearch(e.target.value)}
@@ -359,7 +366,19 @@ export default function AdminView() {
                   ? new Date(u.lastLogin).toLocaleDateString()
                   : "Never";
                 return (
-                  <div key={u.id} className="admin-user-card" onClick={() => showDetail(u.id)}>
+                  <div
+                    key={u.id}
+                    className="admin-user-card"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => showDetail(u.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        showDetail(u.id);
+                      }
+                    }}
+                  >
                     <div className="admin-user-avatar-wrap">
                       {u.photoUrl ? (
                         <img className="admin-user-avatar" src={u.photoUrl} alt="" />

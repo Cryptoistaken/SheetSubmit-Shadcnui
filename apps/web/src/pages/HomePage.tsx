@@ -236,6 +236,7 @@ export default function HomePage() {
           <input
             className="modal-input"
             type="text"
+            aria-label="File name"
             value={renameName}
             autoFocus
             onFocus={(e) => e.currentTarget.select()}

@@ -259,7 +259,15 @@ export default function SheetGrid() {
             <td
               className="rh-add"
               colSpan={displayCols.length + 2}
+              role="button"
+              tabIndex={0}
               onClick={() => useSheetStore.getState().addRow()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  useSheetStore.getState().addRow();
+                }
+              }}
             >
               + Add row
             </td>

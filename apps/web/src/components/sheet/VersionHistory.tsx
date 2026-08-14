@@ -231,6 +231,7 @@ function VersionItem(props: ItemProps) {
                 className="version-name-input"
                 value={renaming.name}
                 placeholder="Version name"
+                aria-label="Version name"
                 autoFocus
                 onChange={(e) => props.onRenameChange(e.target.value)}
                 onKeyDown={(e) => {
@@ -515,12 +516,23 @@ export default function VersionHistory({
                 >
                   <div
                     className="version-day"
+                    role="button"
+                    tabIndex={0}
                     onClick={() =>
                       setGroupsOpen((old) => ({
                         ...old,
                         [g.key]: old[g.key] !== false ? false : true,
                       }))
                     }
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setGroupsOpen((old) => ({
+                          ...old,
+                          [g.key]: old[g.key] !== false ? false : true,
+                        }));
+                      }
+                    }}
                   >
                     <span className="version-day-label">{g.label}</span>
                     <span className="version-day-count">

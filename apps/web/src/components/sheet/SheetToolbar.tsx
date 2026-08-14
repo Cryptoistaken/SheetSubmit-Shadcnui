@@ -178,6 +178,7 @@ export default function SheetToolbar() {
       <button
         className="undo-redo-btn"
         title="Undo"
+        aria-label="Undo"
         disabled={!canUndo}
         onClick={undo}
       >
@@ -186,6 +187,7 @@ export default function SheetToolbar() {
       <button
         className="undo-redo-btn"
         title="Redo"
+        aria-label="Redo"
         disabled={!canRedo}
         onClick={redo}
       >
@@ -202,6 +204,7 @@ export default function SheetToolbar() {
           ref={checkArrowRef}
           className={"check-split-arrow" + (checkOpen ? " open" : "")}
           title="More check options"
+          aria-label="More check options"
           onClick={toggleCheck}
         >
           <svg width="9" height="9" viewBox="0 0 10 6" fill="currentColor">
@@ -245,6 +248,7 @@ export default function SheetToolbar() {
         ref={btnRef}
         className="sheet-more-btn"
         title="More actions"
+        aria-label="More actions"
         onClick={toggle}
       >
         ⋮
@@ -344,9 +348,19 @@ export default function SheetToolbar() {
           <div
             key={col.key}
             className="sheet-more-col-item"
+            role="checkbox"
+            aria-checked={visibleCols.has(col.key)}
+            tabIndex={0}
             onClick={() => {
               close();
               useSheetStore.getState().toggleVisibleCol(col.key);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                close();
+                useSheetStore.getState().toggleVisibleCol(col.key);
+              }
             }}
           >
             <span

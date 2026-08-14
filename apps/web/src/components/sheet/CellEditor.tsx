@@ -51,6 +51,7 @@ export default function CellEditor() {
       ref={inputRef}
       className="qeb-input"
       type="text"
+      aria-label="Cell value"
       placeholder="Enter value…"
       autoComplete="off"
       autoCorrect="off"

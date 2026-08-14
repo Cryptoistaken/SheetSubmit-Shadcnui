@@ -110,7 +110,15 @@ export default function ArchiveView() {
               <div
                 key={f.id}
                 className={`file-card${selected.has(f.id) ? " selected" : ""}`}
+                role="button"
+                tabIndex={0}
                 onClick={() => handleCardSelect(f.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleCardSelect(f.id);
+                  }
+                }}
               >
                 <div className="file-card-icon" style={{ opacity: 0.5 }}>
                   <Archive size={16} />
@@ -123,6 +131,7 @@ export default function ArchiveView() {
                   <button
                     className="file-card-btn archive-restore"
                     title="Restore"
+                    aria-label="Restore"
                     onClick={(e) => {
                       e.stopPropagation();
                       restoreOne(f.id);
@@ -133,6 +142,7 @@ export default function ArchiveView() {
                   <button
                     className="file-card-btn archive-del"
                     title="Delete permanently"
+                    aria-label="Delete permanently"
                     onClick={(e) => {
                       e.stopPropagation();
                       deleteOne(f.id);

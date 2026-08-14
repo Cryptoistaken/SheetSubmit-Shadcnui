@@ -69,11 +69,20 @@ export default function FileCard({
   return (
     <div
       className={`file-card${selected ? " selected" : ""}`}
+      role="button"
+      tabIndex={0}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={clearHold}
       onPointerLeave={clearHold}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          if (selectionMode) onToggleSelect();
+          else onOpen();
+        }
+      }}
     >
       <div className="file-card-icon">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -102,6 +111,7 @@ export default function FileCard({
         <button
           className="file-card-btn file-card-dl"
           title="Download"
+          aria-label="Download"
           onClick={(e) => {
             e.stopPropagation();
             onDownload();
@@ -114,6 +124,7 @@ export default function FileCard({
         <button
           className="file-card-btn file-card-rename"
           title="Rename"
+          aria-label="Rename"
           onClick={(e) => {
             e.stopPropagation();
             onRename();
@@ -126,6 +137,7 @@ export default function FileCard({
         <button
           className="file-card-btn file-card-del"
           title="Delete"
+          aria-label="Delete"
           onClick={(e) => {
             e.stopPropagation();
             onDelete();

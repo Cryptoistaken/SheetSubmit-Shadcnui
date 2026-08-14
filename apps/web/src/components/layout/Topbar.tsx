@@ -204,7 +204,12 @@ export default function Topbar() {
               <div className="gear-toggle-sub">Dark background theme</div>
             </div>
             <label className="toggle-switch">
-              <input type="checkbox" checked={theme === "dark"} onChange={toggle} />
+              <input
+                type="checkbox"
+                aria-label="Night mode"
+                checked={theme === "dark"}
+                onChange={toggle}
+              />
               <span className="toggle-track"></span>
             </label>
           </div>
@@ -219,6 +224,7 @@ export default function Topbar() {
                 <label className="toggle-switch">
                   <input
                     type="checkbox"
+                    aria-label="Floating bubble"
                     checked={bubbleOn}
                     onChange={(e) => {
                       if (e.target.checked) {
@@ -242,11 +248,23 @@ export default function Topbar() {
               <div
                 className="gear-toggle-row"
                 style={{ cursor: "pointer" }}
+                role="button"
+                tabIndex={0}
                 onClick={() => {
                   try {
                     getAndroid()?.checkForUpdates?.();
                   } catch {
                     // bridge missing
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    try {
+                      getAndroid()?.checkForUpdates?.();
+                    } catch {
+                      // bridge missing
+                    }
                   }
                 }}
               >
@@ -261,11 +279,23 @@ export default function Topbar() {
               <div
                 className="gear-toggle-row"
                 style={{ cursor: "pointer" }}
+                role="button"
+                tabIndex={0}
                 onClick={() => {
                   try {
                     getAndroid()?.whatsNew?.();
                   } catch {
                     // bridge missing
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    try {
+                      getAndroid()?.whatsNew?.();
+                    } catch {
+                      // bridge missing
+                    }
                   }
                 }}
               >
@@ -280,11 +310,23 @@ export default function Topbar() {
               <div
                 className="gear-toggle-row"
                 style={{ cursor: "pointer" }}
+                role="button"
+                tabIndex={0}
                 onClick={() => {
                   try {
                     getAndroid()?.openSupport?.();
                   } catch {
                     // bridge missing
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    try {
+                      getAndroid()?.openSupport?.();
+                    } catch {
+                      // bridge missing
+                    }
                   }
                 }}
               >
@@ -321,6 +363,7 @@ export default function Topbar() {
             <input
               className="modal-input"
               type="text"
+              aria-label="File name"
               value={renameName}
               autoFocus
               onFocus={(e) => e.currentTarget.select()}
