@@ -117,22 +117,41 @@ export function buildXlsx(rows: Row[], columns: ColumnDef[]): ArrayBuffer {
   rows.forEach((row) => {
     const isEmpty = columns.every((c) => !row[c.key]);
     if (!isEmpty) data.push(columns.map((c) => row[c.key] || ""));
-  });
-  const ws = XLSX.utils.aoa_to_sheet(data);
+  });  const ws = XLSX.utils.aoa_to_sheet(data);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
   return XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
 }
 
+function isNativeWebView(): boolean {
+  const w = window as unknown as { Android?: { download?: unknown } };
+  return typeof w.Android?.download === "function";
+}
+
+function arrBufToDataUrl(buf: ArrayBuffer, mime: string): string {
+  const bytes = new Uint8Array(buf);
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunk)));
+  }
+  return "data:" + mime + ";base64," + btoa(binary);
+}
+
 export function downloadXlsx(rows: Row[], columns: ColumnDef[], fileName: string): void {
   const buf = buildXlsx(rows, columns);
-  const blob = new Blob([buf], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
+  const mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  const name = (fileName || "export") + ".xlsx";
+  if (isNativeWebView()) {
+    (window as unknown as { Android: { download: (n: string, d: string) => void } })
+      .Android.download(name, arrBufToDataUrl(buf, mime));
+    return;
+  }
+  const blob = new Blob([buf], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = (fileName || "export") + ".xlsx";
+  a.download = name;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -208,7 +227,14 @@ export function downloadSheetRows(
   const ws = XLSX.utils.aoa_to_sheet(data);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
-  XLSX.writeFile(wb, name + (suffix || "") + " [" + data.length + "].xlsx");
+  const filename = name + (suffix || "") + " [" + data.length + "].xlsx";
+  if (isNativeWebView()) {
+    const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
+    (window as unknown as { Android: { download: (n: string, d: string) => void } })
+      .Android.download(filename, arrBufToDataUrl(buf, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+    return true;
+  }
+  XLSX.writeFile(wb, filename);
   return true;
 }
 

@@ -6,6 +6,7 @@ import android.app.DownloadManager;
 import android.Manifest;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
@@ -15,10 +16,13 @@ import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
+import android.provider.MediaStore;
 import android.provider.Settings;
+import android.util.Base64;
 import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
@@ -169,13 +173,19 @@ public class MainActivity extends Activity {
         webView.setDownloadListener(new DownloadListener() {
             @Override
             public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
-                String name = url.substring(url.lastIndexOf('/') + 1);
-                if (name.isEmpty() || name.contains("?")) name = "download.xlsx";
-                DownloadManager.Request req = new DownloadManager.Request(Uri.parse(url));
-                req.setTitle(name);
-                req.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-                DownloadManager dm = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
-                dm.enqueue(req);
+                try {
+                    if (url == null || url.startsWith("blob:")) return;
+                    String name = url.substring(url.lastIndexOf('/') + 1);
+                    if (name.isEmpty() || name.contains("?")) name = "download.xlsx";
+                    DownloadManager.Request req = new DownloadManager.Request(Uri.parse(url));
+                    req.setTitle(name);
+                    if (mimetype != null) req.setMimeType(mimetype);
+                    req.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                    DownloadManager dm = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
+                    if (dm != null) dm.enqueue(req);
+                } catch (Exception e) {
+                    Log.e(TAG, "download: " + e.getMessage());
+                }
             }
         });
 
@@ -202,6 +212,11 @@ public class MainActivity extends Activity {
                         cm.setPrimaryClip(ClipData.newPlainText("sheetsubmit", text == null ? "" : text));
                     }
                 } catch (Exception e) { Log.e(TAG, "writeClipboard: " + e.getMessage()); }
+            }
+
+            @JavascriptInterface
+            public void download(String name, String dataUrl) {
+                saveDownload(name, dataUrl);
             }
 
             @JavascriptInterface
@@ -475,6 +490,57 @@ public class MainActivity extends Activity {
         } catch (Exception e) {
             if (webView != null) webView.loadUrl(url);
         }
+    }
+
+    private void saveDownload(final String rawName, final String dataUrl) {
+        try {
+            if (dataUrl == null || dataUrl.indexOf(',') < 0) return;
+            String meta = dataUrl.substring(0, dataUrl.indexOf(','));
+            String b64 = dataUrl.substring(dataUrl.indexOf(',') + 1);
+            byte[] bytes = Base64.decode(b64, Base64.DEFAULT);
+            final String name = sanitizeFileName(rawName);
+            String mime = meta.contains("csv") ? "text/csv"
+                    : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ContentValues cv = new ContentValues();
+                cv.put(MediaStore.Downloads.DISPLAY_NAME, name);
+                cv.put(MediaStore.Downloads.MIME_TYPE, mime);
+                cv.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/SheetSubmit");
+                Uri uri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
+                if (uri == null) throw new IOException("No Downloads provider");
+                OutputStream os = getContentResolver().openOutputStream(uri);
+                if (os == null) throw new IOException("Cannot open Downloads");
+                os.write(bytes);
+                os.close();
+            } else {
+                File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "SheetSubmit");
+                if (!dir.exists()) dir.mkdirs();
+                FileOutputStream fos = new FileOutputStream(new File(dir, name));
+                fos.write(bytes);
+                fos.close();
+            }
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    Toast.makeText(MainActivity.this, "Saved to Downloads/SheetSubmit/" + name, Toast.LENGTH_LONG).show();
+                }
+            });
+        } catch (Exception e) {
+            Log.e(TAG, "saveDownload: " + e.getMessage());
+            final String err = e.getMessage();
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    Toast.makeText(MainActivity.this, "Download failed: " + (err == null ? "unknown" : err), Toast.LENGTH_LONG).show();
+                }
+            });
+        }
+    }
+
+    private String sanitizeFileName(String raw) {
+        String s = raw == null ? "download.xlsx" : raw;
+        s = s.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
+        return s.isEmpty() ? "download.xlsx" : s;
     }
 
     private void requestEnableBubble(String fileId) {
