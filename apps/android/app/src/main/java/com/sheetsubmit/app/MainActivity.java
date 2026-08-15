@@ -628,14 +628,10 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !getPackageManager().canRequestPackageInstalls()) {
             pendingApkUrl = apkUrl;
             pendingApkSize = sizeBytes;
-            final Intent settingsIntent;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                settingsIntent = new Intent(Settings.ACTION_MANAGE_APP_UNKNOWN_SOURCES,
-                        Uri.parse("package:" + getPackageName()));
-            } else {
-                settingsIntent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                        Uri.parse("package:" + getPackageName()));
-            }
+            // ACTION_MANAGE_UNKNOWN_APP_SOURCES + package: Uri opens the per-app
+            // "Install unknown apps" screen on API 26+ and the generic one below.
+            final Intent settingsIntent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:" + getPackageName()));
             // Deferring show() keeps this out of the update dialog's button-click
             // dispatch, avoiding WindowManager$BadTokenException on dismissal races.
             pollHandler.post(new Runnable() {
