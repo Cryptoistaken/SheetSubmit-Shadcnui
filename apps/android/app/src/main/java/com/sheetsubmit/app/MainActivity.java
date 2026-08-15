@@ -74,6 +74,7 @@ public class MainActivity extends Activity {
     private ValueCallback<Uri[]> filePathCallback;
     private AlertDialog progressDialog;
     private AlertDialog updateDialog;
+    private AlertDialog permissionDialog;
     private ProgressBar progressBar;
     private TextView progressText;
     private String pendingApkUrl;
@@ -567,6 +568,11 @@ public class MainActivity extends Activity {
     private void showUpdateCard(final String tag, final long mb, final String body,
                                 final String apkUrl, final long sizeBytes) {
         if (isFinishing() || isDestroyed()) return;
+        if (updateDialog != null && updateDialog.isShowing()) {
+            try {
+                updateDialog.dismiss();
+            } catch (Exception ignored) {}
+        }
         float density = getResources().getDisplayMetrics().density;
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
@@ -604,6 +610,11 @@ public class MainActivity extends Activity {
         b.setPositiveButton("Update", new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface d, int which) {
+                if (updateDialog != null) {
+                    try {
+                        updateDialog.dismiss();
+                    } catch (Exception ignored) {}
+                }
                 launchDownload(apkUrl, sizeBytes);
             }
         });
@@ -617,29 +628,49 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !getPackageManager().canRequestPackageInstalls()) {
             pendingApkUrl = apkUrl;
             pendingApkSize = sizeBytes;
-            new AlertDialog.Builder(this)
-                    .setTitle("Allow installing updates?")
-                    .setMessage("SheetSubmit needs to install the update. You'll be taken to Settings to allow \"Install unknown apps\" for SheetSubmit — this is required only once.")
-                    .setPositiveButton("Allow", new DialogInterface.OnClickListener() {
-                        @Override
-                        public void onClick(DialogInterface d, int which) {
-                            try {
-                                startActivityForResult(new Intent(
-                                        Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                                        Uri.parse("package:" + getPackageName())), REQ_UNKNOWN_APP_SOURCES);
-                            } catch (Exception e) {
-                                startDownload(apkUrl, sizeBytes);
-                            }
-                        }
-                    })
-                    .setNegativeButton("Cancel", null)
-                    .show();
+            final Intent settingsIntent;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                settingsIntent = new Intent(Settings.ACTION_MANAGE_APP_UNKNOWN_SOURCES,
+                        Uri.parse("package:" + getPackageName()));
+            } else {
+                settingsIntent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                        Uri.parse("package:" + getPackageName()));
+            }
+            // Deferring show() keeps this out of the update dialog's button-click
+            // dispatch, avoiding WindowManager$BadTokenException on dismissal races.
+            pollHandler.post(new Runnable() {
+                @Override
+                public void run() {
+                    if (isFinishing() || isDestroyed()) return;
+                    permissionDialog = new AlertDialog.Builder(MainActivity.this)
+                            .setTitle("Allow installing updates?")
+                            .setMessage("SheetSubmit needs to install the update. You'll be taken to Settings to allow \"Install unknown apps\" for SheetSubmit — this is required only once.")
+                            .setPositiveButton("Allow", new DialogInterface.OnClickListener() {
+                                @Override
+                                public void onClick(DialogInterface d, int which) {
+                                    try {
+                                        startActivityForResult(settingsIntent, REQ_UNKNOWN_APP_SOURCES);
+                                    } catch (Exception e) {
+                                        pendingApkUrl = null;
+                                        pendingApkSize = 0;
+                                        Toast.makeText(MainActivity.this,
+                                                "Couldn't open install-permission settings. Please enable \"Install unknown apps\" for SheetSubmit in your system settings, then try again.",
+                                                Toast.LENGTH_LONG).show();
+                                    }
+                                }
+                            })
+                            .setNegativeButton("Cancel", null)
+                            .create();
+                    permissionDialog.show();
+                }
+            });
         } else {
             startDownload(apkUrl, sizeBytes);
         }
     }
 
     private void startDownload(final String apkUrl, final long totalBytes) {
+        if (isFinishing() || isDestroyed()) return;
         showInlineProgress(totalBytes);
         new Thread(new Runnable() {
             @Override
@@ -736,6 +767,7 @@ public class MainActivity extends Activity {
     }
 
     private void showInlineProgress(long totalBytes) {
+        if (isFinishing() || isDestroyed()) return;
         if (updateDialog != null && updateDialog.isShowing()) {
             float density = getResources().getDisplayMetrics().density;
             LinearLayout layout = new LinearLayout(this);
@@ -766,6 +798,7 @@ public class MainActivity extends Activity {
     }
 
     private void showProgressDialog(long totalBytes) {
+        if (isFinishing() || isDestroyed()) return;
         float density = getResources().getDisplayMetrics().density;
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
@@ -809,6 +842,15 @@ public class MainActivity extends Activity {
         progressText = null;
     }
 
+    private void dismissPermissionDialog() {
+        if (permissionDialog != null && permissionDialog.isShowing()) {
+            try {
+                permissionDialog.dismiss();
+            } catch (Exception ignored) {}
+        }
+        permissionDialog = null;
+    }
+
     private void openInstaller(File apk) {
         try {
             Intent intent = new Intent(Intent.ACTION_VIEW);
@@ -829,12 +871,15 @@ public class MainActivity extends Activity {
             }
         }
         if (requestCode == REQ_UNKNOWN_APP_SOURCES) {
+            dismissPermissionDialog();
             if (getPackageManager().canRequestPackageInstalls()) {
                 if (pendingApkUrl != null) {
                     startDownload(pendingApkUrl, pendingApkSize);
                     pendingApkUrl = null;
                 }
             } else {
+                pendingApkUrl = null;
+                pendingApkSize = 0;
                 Toast.makeText(this,
                         "Please allow 'Install unknown apps' for SheetSubmit, then try again",
                         Toast.LENGTH_LONG).show();
@@ -893,6 +938,7 @@ public class MainActivity extends Activity {
         destroyed = true;
         pollHandler.removeCallbacks(pollRunnable);
         dismissProgress();
+        dismissPermissionDialog();
         if (webView != null) {
             try {
                 if (webView.getParent() != null) {
