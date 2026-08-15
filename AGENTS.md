@@ -26,3 +26,14 @@ state or session. Keep it updated — it is the only continuity guarantee. Never
 6. Commit after each completed phase with a `Phase N: …` message, then update `PLAN.md`
    (status, commit hash, gotchas).
 7. Do not touch the old repo unless the task explicitly requires it; treat it as protected.
+8. **Deploy flow (web/server changes):** after a web/server change is done and the user wants
+   it live, ALWAYS do these two steps in order: (1) commit + push to `main`, (2) run
+   `redeploy.bat` from the repo root — it `docker build` + `docker push`es
+   `popyog/sheetsubmit-shadcnui:latest` (Railway auto-deploys the pushed image). Do not skip
+   either step; ask first only if the user hasn't asked to ship.
+9. **Android — NEVER build locally, CI only.** `apps/android` is built by GitHub Actions
+   (`.github/workflows/build-android.yml`, triggers on push to `apps/android/**` →
+   `assembleRelease` + GitHub Release tagged `v<run_number>`). Never run gradle locally.
+   The in-app "Check for updates" / "What's new" buttons read
+   `https://api.github.com/repos/Cryptoistaken/SheetSubmit-Shadcnui/releases/latest`
+   (repo is PUBLIC — anonymous read works; config in `Config.GITHUB_REPO`).

@@ -116,6 +116,21 @@ SheetSubmit-Shadcnui/
 ## 4. Handoff — where we left off & how to resume from any state
 
 ### Last state (as of last update)
+- **Double-tap copy keeps the cell selected (uncommitted):** touch double-tap on a cell
+  (`SheetGrid.handleClick` ~line 216) now calls `selectCellOnly(rowIdx, colKey)` instead of
+  `cancelQuickEdit()` — the old call nulled `selectedCell`, so the cell visually unselected
+  right after copy/paste. QEB still closes; selection highlight stays. Desktop inline-edit
+  path untouched. Verified: `tsc` + `vite build` clean.
+- **Floating bubble icon → claude-code starburst (uncommitted):** new
+  `apps/android/app/src/main/res/drawable/bubble_icon.xml` vector (fill `#D97757`,
+  evenOdd) replaces `R.mipmap.ic_launcher` in `FloatingBubbleService.addBubbleToWindow`.
+  Android builds at CI only — push `apps/android/**` → `build-android.yml` → `assembleRelease`.
+- **Update / "What's new" buttons fixed (no code change needed):** root cause was
+  `Config.GITHUB_REPO = Cryptoistaken/SheetSubmit-Shadcnui` returning HTTP 404 to anonymous
+  GitHub API — the repo was **PRIVATE**. Made public (`gh repo edit ... --visibility public`);
+  anonymous `releases/latest` now 200 (tag `v6`, 1 APK asset). Works on the already-installed
+  APK. Tag scheme `v<github.run_number>`, app `versionCode` = CI run number (build.gradle
+  `VERSION_CODE` env). Parsing/flow was already correct (mirrors KiloProxy which works).
 - **GitHub-style version diff page + minimal version history (this batch):** `DiffView`
   redesigned to the GitHub look — summary bar ("1 file changed", `+add`/`−del`, diffstat
   dots), toolbar (collapse-all icon, "Search within code" with live filter + `<mark>`

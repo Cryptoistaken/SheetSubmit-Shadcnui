@@ -214,7 +214,7 @@ export default function SheetGrid() {
         now - last.t < 400
       ) {
         lastTap.current = null;
-        useSheetStore.getState().cancelQuickEdit();
+        useSheetStore.getState().selectCellOnly(rowIdx, colKey);
         void useSheetStore.getState().doubleTap(rowIdx, colKey);
         return;
       }

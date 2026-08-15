@@ -176,7 +176,7 @@ public class FloatingBubbleService extends Service {
         circle.setLayoutParams(clp);
 
         ImageView icon = new ImageView(this);
-        icon.setImageResource(R.mipmap.ic_launcher);
+        icon.setImageResource(R.drawable.bubble_icon);
         FrameLayout.LayoutParams ilp = new FrameLayout.LayoutParams(dp(30), dp(30), Gravity.CENTER);
         icon.setLayoutParams(ilp);
         circle.addView(icon);
