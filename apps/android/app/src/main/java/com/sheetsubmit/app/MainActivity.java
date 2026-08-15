@@ -11,6 +11,7 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -19,7 +20,9 @@ import android.os.Looper;
 import android.os.Message;
 import android.provider.Settings;
 import android.util.Log;
+import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Button;
 import android.webkit.CookieManager;
 import android.webkit.DownloadListener;
 import android.webkit.JavascriptInterface;
@@ -65,6 +68,7 @@ public class MainActivity extends Activity {
     private final Handler pollHandler = new Handler(Looper.getMainLooper());
     private ValueCallback<Uri[]> filePathCallback;
     private AlertDialog progressDialog;
+    private AlertDialog updateDialog;
     private ProgressBar progressBar;
     private TextView progressText;
     private String pendingApkUrl;
@@ -266,21 +270,7 @@ public class MainActivity extends Activity {
                             runOnUiThread(new Runnable() {
                                 @Override
                                 public void run() {
-                                    AlertDialog.Builder b = new AlertDialog.Builder(MainActivity.this);
-                                    b.setTitle("Update available");
-                                    String msg = "v" + tag + " · " + mb + " MB — install over the current version, data preserved";
-                                    if (!body.isEmpty()) {
-                                        msg += "\n\n" + body;
-                                    }
-                                    b.setMessage(msg);
-                                    b.setPositiveButton("Update", new DialogInterface.OnClickListener() {
-                                        @Override
-                                        public void onClick(DialogInterface d, int which) {
-                                            launchDownload(apkUrl, asset.optLong("size"));
-                                        }
-                                    });
-                                    b.setNegativeButton("Later", null);
-                                    b.show();
+                                    showUpdateCard(tag, mb, body, apkUrl, asset.optLong("size"));
                                 }
                             });
                         } catch (Exception e) {
@@ -323,6 +313,7 @@ public class MainActivity extends Activity {
                                     Toast.makeText(MainActivity.this, R.string.whats_new_error, Toast.LENGTH_LONG).show();
                                     return;
                                 }
+                                if (isFinishing() || isDestroyed()) return;
                                 AlertDialog.Builder b = new AlertDialog.Builder(MainActivity.this);
                                 b.setTitle(getString(R.string.whats_new_title) + " in " + tag);
                                 b.setMessage(body.isEmpty() ? getString(R.string.whats_new_empty) : body);
@@ -506,7 +497,56 @@ public class MainActivity extends Activity {
         FloatingBubbleService.start(this);
     }
 
+    private void showUpdateCard(final String tag, final long mb, final String body,
+                                final String apkUrl, final long sizeBytes) {
+        if (isFinishing() || isDestroyed()) return;
+        float density = getResources().getDisplayMetrics().density;
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding((int) (4 * density), (int) (4 * density), (int) (4 * density), (int) (4 * density));
+
+        TextView line = new TextView(this);
+        line.setText("v" + tag + " · " + mb + " MB — install over the current version, data preserved");
+        layout.addView(line);
+
+        if (!body.isEmpty()) {
+            View divider = new View(this);
+            divider.setBackgroundColor(0xFF9CA3AF);
+            LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, (int) (1 * density));
+            dlp.topMargin = (int) (12 * density);
+            dlp.bottomMargin = (int) (12 * density);
+            layout.addView(divider, dlp);
+
+            TextView heading = new TextView(this);
+            heading.setText("What's new");
+            heading.setTypeface(heading.getTypeface(), Typeface.BOLD);
+            LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            hlp.bottomMargin = (int) (4 * density);
+            layout.addView(heading, hlp);
+
+            TextView notes = new TextView(this);
+            notes.setText(body);
+            layout.addView(notes);
+        }
+
+        AlertDialog.Builder b = new AlertDialog.Builder(this);
+        b.setTitle("Update available");
+        b.setView(layout);
+        b.setPositiveButton("Update", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface d, int which) {
+                launchDownload(apkUrl, sizeBytes);
+            }
+        });
+        b.setNegativeButton("Later", null);
+        updateDialog = b.create();
+        updateDialog.show();
+    }
+
     private void launchDownload(final String apkUrl, final long sizeBytes) {
+        if (isFinishing() || isDestroyed()) return;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !getPackageManager().canRequestPackageInstalls()) {
             pendingApkUrl = apkUrl;
             pendingApkSize = sizeBytes;
@@ -533,7 +573,7 @@ public class MainActivity extends Activity {
     }
 
     private void startDownload(final String apkUrl, final long totalBytes) {
-        showProgressDialog(totalBytes);
+        showInlineProgress(totalBytes);
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -590,7 +630,7 @@ public class MainActivity extends Activity {
                         runOnUiThread(new Runnable() {
                             @Override
                             public void run() {
-                                if (destroyed) return;
+                                if (destroyed || isFinishing() || isDestroyed()) return;
                                 dismissProgress();
                                 openInstaller(apk);
                             }
@@ -619,13 +659,43 @@ public class MainActivity extends Activity {
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
-                        if (destroyed) return;
+                        if (destroyed || isFinishing() || isDestroyed()) return;
                         dismissProgress();
                         Toast.makeText(MainActivity.this, err, Toast.LENGTH_LONG).show();
                     }
                 });
             }
         }).start();
+    }
+
+    private void showInlineProgress(long totalBytes) {
+        if (updateDialog != null && updateDialog.isShowing()) {
+            float density = getResources().getDisplayMetrics().density;
+            LinearLayout layout = new LinearLayout(this);
+            layout.setOrientation(LinearLayout.VERTICAL);
+            layout.setPadding((int) (4 * density), (int) (4 * density), (int) (4 * density), (int) (4 * density));
+            ProgressBar bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+            bar.setMax(100);
+            TextView text = new TextView(this);
+            text.setText("0% · 0.0 / " + String.format(Locale.US, "%.1f MB", totalBytes / 1048576.0));
+            layout.addView(bar);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.topMargin = (int) (12 * density);
+            layout.addView(text, lp);
+            progressBar = bar;
+            progressText = text;
+            progressDialog = updateDialog;
+            updateDialog.setTitle("Downloading update…");
+            updateDialog.setCancelable(false);
+            updateDialog.setView(layout);
+            Button positive = updateDialog.getButton(DialogInterface.BUTTON_POSITIVE);
+            if (positive != null) positive.setVisibility(View.GONE);
+            Button negative = updateDialog.getButton(DialogInterface.BUTTON_NEGATIVE);
+            if (negative != null) negative.setVisibility(View.GONE);
+        } else {
+            showProgressDialog(totalBytes);
+        }
     }
 
     private void showProgressDialog(long totalBytes) {
