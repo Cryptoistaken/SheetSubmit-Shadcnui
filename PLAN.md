@@ -116,6 +116,27 @@ SheetSubmit-Shadcnui/
 ## 4. Handoff — where we left off & how to resume from any state
 
 ### Last state (as of last update)
+- **Bubble UX overhaul (web + Android, commit PENDING):** (1) gear panel: removed
+  "What's new" row, shortened subs ("Download the latest version", "Contact us on
+  Telegram"), replaced ↻/ℹ/✉ unicode with lucide `RefreshCw`/`MessageCircle`;
+  (2) toggles: `inset:` → explicit `top/left/right/bottom` (old WebView compat —
+  `inset` needs Chrome 87+), knob gets `box-shadow`, label `inline-block`;
+  (3) bubble pick flow: enabling the bubble NO longer opens the BubblePicker modal —
+  it navigates to `/`, sets `useBubbleStore.pickMode`, and shows a blue
+  `.bubble-pick-banner` ("Choose a bubble file / Cancel"); tapping a non-fb file
+  toasts "Only Facebook files work in the bubble"; tapping an `fb_cookie` card calls
+  `Android.enableBubble(id)` + toast. `BubblePicker.tsx` deleted;
+  `stores/bubbleStore.ts` (zustand) is the single source of truth for `on`/`pickMode`
+  (Topbar toggle + HomePage pick + load-event resync all write it);
+  (4) Android `FloatingBubbleService`: **WebView stays alive** — `ensureMiniWebView`
+  now just returns when non-null (no destroy/recreate on reopen) and `hidePanel` no
+  longer unloads `about:blank` (only `onPause`), so the sheet renders instantly after
+  enable and stays rendered until app close / bubble disabled (reverts the earlier
+  RAM-fix that reloaded it fresh every open); (5) bubble mini-window: removed the
+  `.topbar` + `SheetToolbar` (undo/redo/⋮) — `BubbleMode` is now just `.sheet-view`
+  full-height (`inset: 0`), MemoryRouter import dropped. Verified: `tsc -b` + `vite
+  build` clean; Playwright smoke — gear rows, toggle on→banner→pick→enable→toggle
+  checked, cancel→off, night-mode toggle, bubble page full-bleed grid no topbar.
 - **Android update flow fixed — release signing now works (commits `492ad34`, `cc11d46`, release `v15`):**
   - **Bug:** tapping "Update" on the update-available dialog crashed the app
     (`WindowManager$BadTokenException` from a nested `AlertDialog.show()` dispatched

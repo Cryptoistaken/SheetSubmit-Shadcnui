@@ -1,9 +1,7 @@
 import { useEffect, useRef } from "react";
-import { MemoryRouter } from "react-router";
 
 import QuickEditBar from "@/components/sheet/QuickEditBar";
 import SheetGrid from "@/components/sheet/SheetGrid";
-import SheetToolbar from "@/components/sheet/SheetToolbar";
 import { usePersist } from "@/hooks/usePersist";
 import { toast } from "@/lib/toast";
 import { useSheetStore } from "@/stores/sheetStore";
@@ -192,19 +190,11 @@ export default function BubbleMode({ fileId }: { fileId: string }) {
   }
 
   return (
-    <MemoryRouter>
-      <div className="flex h-dvh flex-col">
-        <div className="topbar">
-          <div className="topbar-l"></div>
-          <div className="topbar-r">
-            <SheetToolbar />
-          </div>
-        </div>
-        <div className="sheet-view">
-          <SheetGrid />
-          <QuickEditBar />
-        </div>
+    <div className="flex h-dvh flex-col">
+      <div className="sheet-view">
+        <SheetGrid />
+        <QuickEditBar />
       </div>
-    </MemoryRouter>
+    </div>
   );
 }

@@ -486,6 +486,8 @@ button, input, select, textarea {
     width: 36px;
     height: 20px;
     flex-shrink: 0;
+    display: inline-block;
+    vertical-align: middle;
 }
 .toggle-switch input {
     opacity: 0;
@@ -495,7 +497,10 @@ button, input, select, textarea {
 }
 .toggle-track {
     position: absolute;
-    inset: 0;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
     background: var(--border2);
     border-radius: 10px;
     cursor: pointer;
@@ -510,6 +515,7 @@ button, input, select, textarea {
     height: 14px;
     border-radius: 50%;
     background: #fff;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
     transition: transform 0.2s, background 0.2s;
 }
 .toggle-switch input:checked + .toggle-track {
@@ -557,6 +563,27 @@ button, input, select, textarea {
     display: flex;
     flex-direction: column;
     overflow-y: auto;
+}
+.bubble-pick-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+    background: var(--blue-light);
+    border: 1px solid var(--sel-border);
+    border-radius: var(--rl);
+}
+.bubble-pick-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+}
+.bubble-pick-sub {
+    font-size: 12px;
+    color: var(--text2);
+    margin-top: 2px;
 }
 #homePaneFiles,
 #homePaneArchive {
@@ -2699,16 +2726,11 @@ body.bubble-mode {
     background: var(--bg);
 }
 
-body.bubble-mode .topbar {
-    display: flex !important;
-    height: 40px;
-}
-
 body.bubble-mode .sheet-view {
     display: flex !important;
     flex-direction: column;
     position: fixed;
-    inset: 40px 0 0 0;
+    inset: 0 0 0 0;
 }
 
 body.bubble-mode .sheet-wrap { flex: 1; }

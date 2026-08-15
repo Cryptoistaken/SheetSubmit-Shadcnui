@@ -1,19 +1,19 @@
+import { MessageCircle, RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 
-import BubblePicker from "@/components/bubble/BubblePicker";
 import SheetToolbar from "@/components/sheet/SheetToolbar";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
 import { useToast } from "@/lib/toast";
+import { useBubbleStore } from "@/stores/bubbleStore";
 import { useSheetStore } from "@/stores/sheetStore";
 
 interface AndroidBridge {
   isBubbleEnabled?: () => boolean;
   disableBubble?: () => void;
   checkForUpdates?: () => void;
-  whatsNew?: () => void;
   openSupport?: () => void;
 }
 
@@ -44,23 +44,21 @@ export default function Topbar() {
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameName, setRenameName] = useState("");
   const [isAndroid, setIsAndroid] = useState(() => !!getAndroid());
-  const [bubbleOn, setBubbleOn] = useState(
-    () => !!getAndroid()?.isBubbleEnabled?.(),
-  );
-  const [bubblePickerOpen, setBubblePickerOpen] = useState(false);
+  const bubbleOn = useBubbleStore((s) => s.on);
   const showToast = useToast();
 
   // The Android bridge can register after first paint (old bubble.js re-checked
   // on window load) — re-sync so Android-only gear rows appear if it arrives late.
   useEffect(() => {
-    const onLoad = () => {
+    const sync = () => {
       if (getAndroid()) {
         setIsAndroid(true);
-        setBubbleOn(!!getAndroid()?.isBubbleEnabled?.());
+        useBubbleStore.getState().setOn(!!getAndroid()?.isBubbleEnabled?.());
       }
     };
-    window.addEventListener("load", onLoad);
-    return () => window.removeEventListener("load", onLoad);
+    sync();
+    window.addEventListener("load", sync);
+    return () => window.removeEventListener("load", sync);
   }, []);
 
   const isFilePage =
@@ -253,14 +251,15 @@ export default function Topbar() {
                     onChange={(e) => {
                       if (e.target.checked) {
                         setPanelOpen(false);
-                        setBubblePickerOpen(true);
+                        useBubbleStore.setState({ pickMode: true });
+                        navigate("/");
                       } else {
                         try {
                           getAndroid()?.disableBubble?.();
                         } catch {
                           // bridge missing
                         }
-                        setBubbleOn(false);
+                        useBubbleStore.getState().setOn(false);
                         showToast("Floating bubble off");
                       }
                     }}
@@ -294,42 +293,9 @@ export default function Topbar() {
               >
                 <div>
                   <div className="gear-toggle-label">Check for updates</div>
-                  <div className="gear-toggle-sub">
-                    Download and install the latest version
-                  </div>
+                  <div className="gear-toggle-sub">Download the latest version</div>
                 </div>
-                <span style={{ fontSize: 18, lineHeight: 1 }}>{"\u21bb"}</span>
-              </div>
-              <div
-                className="gear-toggle-row"
-                style={{ cursor: "pointer" }}
-                role="button"
-                tabIndex={0}
-                onClick={() => {
-                  try {
-                    getAndroid()?.whatsNew?.();
-                  } catch {
-                    // bridge missing
-                  }
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    try {
-                      getAndroid()?.whatsNew?.();
-                    } catch {
-                      // bridge missing
-                    }
-                  }
-                }}
-              >
-                <div>
-                  <div className="gear-toggle-label">What's new</div>
-                  <div className="gear-toggle-sub">
-                    Latest changes and improvements
-                  </div>
-                </div>
-                <span style={{ fontSize: 18, lineHeight: 1 }}>{"\u2139"}</span>
+                <RefreshCw size={18} />
               </div>
               <div
                 className="gear-toggle-row"
@@ -356,11 +322,9 @@ export default function Topbar() {
               >
                 <div>
                   <div className="gear-toggle-label">Report an issue</div>
-                  <div className="gear-toggle-sub">
-                    Tell us about a problem on Telegram
-                  </div>
+                  <div className="gear-toggle-sub">Contact us on Telegram</div>
                 </div>
-                <span style={{ fontSize: 18, lineHeight: 1 }}>{"\u2709"}</span>
+                <MessageCircle size={18} />
               </div>
             </>
           ) : null}
@@ -412,13 +376,6 @@ export default function Topbar() {
           </div>
         </div>
       )}
-      <BubblePicker
-        open={bubblePickerOpen}
-        onClose={() => {
-          setBubblePickerOpen(false);
-          setBubbleOn(!!getAndroid()?.isBubbleEnabled?.());
-        }}
-      />
     </div>
   );
 }

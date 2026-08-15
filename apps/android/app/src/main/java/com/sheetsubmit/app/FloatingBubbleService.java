@@ -381,17 +381,9 @@ public class FloatingBubbleService extends Service {
 
     private void ensureMiniWebView() {
         if (miniWebView != null) {
-            try {
-                String url = miniWebView.getUrl();
-                // hidePanel() unloads about:blank — a reused WebView would
-                // show a blank page on the next open, so recreate it.
-                if (url != null && !url.equals("about:blank")) return;
-                try { miniWebView.destroy(); } catch (Exception ignored) {}
-                miniWebView = null;
-            } catch (Exception e) {
-                try { miniWebView.destroy(); } catch (Exception ignored) {}
-                miniWebView = null;
-            }
+            // Keep the already-loaded page alive — never recreate on reopen.
+            // It is only destroyed in onDestroy() (app close / bubble disabled).
+            return;
         }
         try {
             miniWebView = new WebView(this);
@@ -465,7 +457,9 @@ public class FloatingBubbleService extends Service {
 
     private void hidePanel() {
         if (miniWebView != null) {
-            try { miniWebView.loadUrl("about:blank"); } catch (Exception ignored) {}
+            // Keep the page rendered — only pause JS timers while hidden.
+            // The WebView itself stays alive until the app closes or the
+            // bubble is disabled, so the sheet is shown instantly next time.
             try { miniWebView.onPause(); } catch (Exception ignored) {}
         }
         if (panelRoot != null) {

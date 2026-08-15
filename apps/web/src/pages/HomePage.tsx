@@ -12,12 +12,14 @@ import { useToast } from "@/lib/toast";
 import { FILE_TYPE_DEFS } from "@/lib/types";
 import type { FileType, SheetFile } from "@/lib/types";
 import { downloadXlsx, genId, hydrateWaCache, importXlsx, todayStr } from "@/lib/xlsx";
+import { useBubbleStore } from "@/stores/bubbleStore";
 
 type Tab = "files" | "archive" | "admin";
 
 interface AndroidBridge {
   getBubbleFile?: () => string;
   disableBubble?: () => void;
+  enableBubble?: (id: string) => void;
 }
 
 function getAndroid(): AndroidBridge | null {
@@ -68,6 +70,24 @@ export default function HomePage() {
   }, [loadFiles]);
 
   const openFile = (id: string) => navigate("/file/" + id);
+
+  const bubblePickMode = useBubbleStore((s) => s.pickMode);
+
+  const pickBubbleFile = (id: string) => {
+    const f = files?.find((x) => x.id === id);
+    if (!f) return;
+    if (f.type !== "fb_cookie") {
+      showToast("Only Facebook files work in the bubble");
+      return;
+    }
+    try {
+      getAndroid()?.enableBubble?.(f.id);
+    } catch {
+      // bridge may be gone
+    }
+    useBubbleStore.setState({ on: true, pickMode: false });
+    showToast("Floating bubble on - " + f.name);
+  };
 
   const downloadFile = async (f: SheetFile) => {
     const rows = await api.getRows(f.id);
@@ -217,13 +237,29 @@ export default function HomePage() {
 
       {tab === "files" ? (
         <div className="home-pane" id="homePaneFiles">
+          {bubblePickMode ? (
+            <div className="bubble-pick-banner">
+              <div>
+                <div className="bubble-pick-title">Choose a bubble file</div>
+                <div className="bubble-pick-sub">
+                  Tap a Facebook file to show it in the mini window
+                </div>
+              </div>
+              <button
+                className="btn btn-ghost"
+                onClick={() => useBubbleStore.getState().setPickMode(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          ) : null}
           {files !== null ? (
             <FileGrid
               files={files}
               crossDupCounts={dupCounts}
               selectedIds={selected}
               selectionMode={selectionMode}
-              onOpen={openFile}
+              onOpen={bubblePickMode ? pickBubbleFile : openFile}
               onDownload={downloadFile}
               onRename={openRename}
               onDelete={deleteFile}
