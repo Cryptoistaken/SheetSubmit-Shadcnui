@@ -264,13 +264,19 @@ waRouter.post("/fb/wa-check", requireAuth, async (req, res) => {
       error: null,
     };
     if (cuser) {
-      await setJSON("wa:" + cuser, {
-        status: result.eligible ? "eligible" : result.error ? "error" : "ineligible",
-        banReason: result.banReason || null,
-        error: result.error || null,
-        ts: Date.now(),
-        checkedAt: Date.now(),
-      });
+      if (result.eligible) {
+        await setJSON("wa:" + cuser, {
+          status: "eligible",
+          banReason: result.banReason || null,
+          error: result.error || null,
+          ts: Date.now(),
+          checkedAt: Date.now(),
+        });
+      } else if (result.error === null) {
+        // definitive "not eligible" — never cache it; drop any stale entry so the
+        // next load re-checks live instead of trusting an old ineligible result.
+        await delKey("wa:" + cuser);
+      }
     }
     res.json(result);
   } catch (e) {
