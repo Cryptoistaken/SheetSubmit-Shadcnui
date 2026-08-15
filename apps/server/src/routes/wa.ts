@@ -308,6 +308,11 @@ waRouter.get("/wa/cache", requireAuth, async (req, res) => {
         await delKey("wa:" + uid);
         continue;
       }
+      if (val.status !== "eligible") {
+        // stale legacy entry (old server cached ineligible/error) — purge, never serve
+        await delKey("wa:" + uid);
+        continue;
+      }
       cache[uid] = { status: val.status || null, banReason: val.banReason || null, error: val.error || null, ts: val.ts || null };
     }
     res.json({ cache });
