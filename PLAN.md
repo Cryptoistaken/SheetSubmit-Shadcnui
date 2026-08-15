@@ -116,6 +116,38 @@ SheetSubmit-Shadcnui/
 ## 4. Handoff — where we left off & how to resume from any state
 
 ### Last state (as of last update)
+- **Android update flow fixed — release signing now works (commits `492ad34`, `cc11d46`, release `v15`):**
+  - **Bug:** tapping "Update" on the update-available dialog crashed the app
+    (`WindowManager$BadTokenException` from a nested `AlertDialog.show()` dispatched
+    inside the button-click handler). Fixed in `MainActivity.showUpdateCard` /
+    `launchDownload`: dialog dismissed before `launchDownload`; the "Allow installing
+    updates?" permission dialog is now posted via `pollHandler` (out of the click
+    dispatch) with all `.show()` guarded by `isFinishing()/isDestroyed()`.
+  - **Flow:** Update → if `!canRequestPackageInstalls()` → dialog → opens the per-app
+    "Install unknown apps" Settings screen via `ACTION_MANAGE_UNKNOWN_APP_SOURCES` +
+    `package:` Uri (works on API 26+; the assumed
+    `ACTION_MANAGE_APP_UNKNOWN_SOURCES` constant **does not exist** in any SDK — the
+    CI `cannot find symbol` failure caught it, fixed in `cc11d46`) → on return, if
+    granted, `startDownload`; else toast + clear stale `pendingApkUrl`.
+  - **Manifest:** `REQUEST_INSTALL_PACKAGES` permission added (line 13) — required for
+    `canRequestPackageInstalls()` on API 26+.
+  - **ApkProvider hardened:** path-traversal guard on the last-path-segment, always
+    serve `MODE_READ_ONLY`, stays `exported="false"` (installer reads via the
+    `FLAG_GRANT_READ_URI_PERMISSION` grant, same as androidx FileProvider).
+  - **Root cause of "App not installed" on updates (found by CI audit):** every prior
+    release (v3–v13) was **debug-signed with a fresh random keystore per run** because
+    `ANDROID_KEYSTORE_BASE64`/`ANDROID_KEYSTORE_PASSWORD` secrets were never set on the
+    **new** repo (they existed only on the old `Cryptoistaken/SheetSubmit` repo).
+    Generated a new keystore locally (keytool, 2048-bit RSA, 10000-day validity),
+    set both secrets on `Cryptoistaken/SheetSubmit-Shadcnui`, and backed up the key to
+    `C:\Users\Ratul\Documents\SheetSubmit-Release-Keystore\` (keystore + password).
+    `build-android.yml` now **fails loudly** if the secrets are missing (prevents
+    silent debug-signed releases). Release **v15** built signed with the real key.
+  - **⚠ One-time reinstall:** the on-device app was debug-signed, so the first
+    properly-signed release (v15) requires a manual **uninstall → reinstall**; after
+    that, in-app updates work. If the keystore backup is lost, future releases can't
+    install over each other — treat it as irreplaceable.
+  - Minor: `softprops/action-gh-release@v2` runs on Node 20 (deprecation warning, harmless).
 - **Double-tap copy keeps the cell selected (uncommitted):** touch double-tap on a cell
   (`SheetGrid.handleClick` ~line 216) now calls `selectCellOnly(rowIdx, colKey)` instead of
   `cancelQuickEdit()` — the old call nulled `selectedCell`, so the cell visually unselected
