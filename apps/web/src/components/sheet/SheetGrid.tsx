@@ -594,7 +594,6 @@ const GridCell = memo(function GridCell({
   const invalid = useSheetStore((s) => s.invalidCells.has(rowIdx + ":" + colKey));
   const active = useSheetStore(
     (s) =>
-      (s.qebOpen || s.inlineEdit) &&
       s.selectedCell?.rowIdx === rowIdx &&
       s.selectedCell.colIdx === colKey,
   );
