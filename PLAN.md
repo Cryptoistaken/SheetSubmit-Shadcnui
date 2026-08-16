@@ -116,6 +116,20 @@ SheetSubmit-Shadcnui/
 ## 4. Handoff — where we left off & how to resume from any state
 
 ### Last state (as of last update)
+- **Launcher icon = square design (commit `54ac32c`, release `v20`):** researched launcher-mask
+  reality — adaptive-icon masks are OEM/launcher-chosen (Pixel=circle, Samsung=squircle,
+  some=rounded square/teardrop) and app CANNOT force the shape; a legacy (non-adaptive) icon
+  on API 26+ launchers is WORSE (Pixel renders it as a small square on a white circular
+  "disc"). Fix: kept the `<adaptive-icon>`, made the design itself square — foreground
+  `ic_launcher_foreground.xml` now draws a full-canvas white square (`M0,0h108v108h-108z`)
+  under the centered black adafruit glyph, on top of the full-bleed white
+  `@color/ic_launcher_background`, so both layers fill and the masked result reads as a white
+  square tile (circle mask on Pixel stays a circle — unavoidable, launcher-decided). Removed
+  `android:roundIcon` from the manifest and deleted `mipmap-anydpi-v26/ic_launcher_round.xml`
+  (roundIcon only served API-25 circular launchers; on API 26+ circular launchers mask
+  `android:icon` anyway, and keeping it can suppress themed icons on Android 13+). minSdk 26 →
+  no legacy PNG fallback needed. CI GREEN, release `v20` on
+  `Cryptoistaken/SheetSubmit-Shadcnui`.
 - **Dead rows override page check (uncommitted):** a dead account (`status === "bad"`) now
   always shows the red dot — `SheetGrid.dotClass` priority reordered to dup → bad(red) →
   wa eligible(green) → good/done(blue) → pending(spin). `fbcookie.checkAccounts` clears
