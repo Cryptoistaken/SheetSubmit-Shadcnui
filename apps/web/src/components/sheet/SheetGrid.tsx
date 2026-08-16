@@ -127,6 +127,9 @@ export default function SheetGrid() {
       suppressClick.current = false;
       return;
     }
+    const isBubble =
+      typeof document !== "undefined" &&
+      document.body.classList.contains("bubble-mode");
     const t = e.target as HTMLElement | null;
     if (!t) return;
     const td = t.closest("td.dc") as HTMLElement | null;
@@ -136,7 +139,7 @@ export default function SheetGrid() {
     const corner = t.closest("th.corner") as HTMLElement | null;
 
     if (corner) {
-      useSheetStore.getState().selectAllCells();
+      if (!isBubble) useSheetStore.getState().selectAllCells();
       return;
     }
 
@@ -168,7 +171,7 @@ export default function SheetGrid() {
 
     const store = useSheetStore.getState();
     if (rh) {
-      store.toggleSelection("row", Number(rh.dataset.row), null);
+      if (!isBubble) store.toggleSelection("row", Number(rh.dataset.row), null);
       return;
     }
     if (dot) {
@@ -176,7 +179,7 @@ export default function SheetGrid() {
       return;
     }
     if (ch) {
-      store.toggleSelection("col", 0, ch.dataset.col ?? "");
+      if (!isBubble) store.toggleSelection("col", 0, ch.dataset.col ?? "");
       return;
     }
     if (td) {
@@ -237,6 +240,9 @@ export default function SheetGrid() {
     const t = e.target as HTMLElement | null;
     if (!t) return;
     const store = useSheetStore.getState();
+    const isBubble =
+      typeof document !== "undefined" &&
+      document.body.classList.contains("bubble-mode");
 
     const td = t.closest("td.dc") as HTMLElement | null;
     if (store.isDesktop) {
@@ -272,7 +278,7 @@ export default function SheetGrid() {
       return;
     }
 
-    if (td && !store.selectionMode) {
+    if (td && !store.selectionMode && !isBubble) {
       const rowIdx = Number(td.dataset.row);
       const colKey = td.dataset.col ?? "";
       holdTimer.current = setTimeout(() => {
@@ -308,7 +314,7 @@ export default function SheetGrid() {
     }
 
     const ch = t.closest("th.ch:not(.corner):not(.ch-dot)") as HTMLElement | null;
-    if (ch && !store.selectionMode) {
+    if (ch && !store.selectionMode && !isBubble) {
       const colKey = ch.dataset.col ?? "";
       holdTimer.current = setTimeout(() => {
         holdTimer.current = null;
@@ -320,7 +326,7 @@ export default function SheetGrid() {
     }
 
     const rh = t.closest("th.rh") as HTMLElement | null;
-    if (rh && !store.selectionMode) {
+    if (rh && !store.selectionMode && !isBubble) {
       const rowIdx = Number(rh.dataset.row);
       holdTimer.current = setTimeout(() => {
         holdTimer.current = null;

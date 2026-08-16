@@ -2747,15 +2747,27 @@ body.bubble-mode .sheet-more-menu {
     overflow-y: auto !important;
 }
 
-/* Quick-edit pill - 30% smaller (scaled down), centered in the mini window */
+/* Quick-edit bar - input + Clear/Paste/Copy pinned to the bottom center */
 body.bubble-mode .qeb-bar {
     left: 50% !important;
     right: auto !important;
-    top: 50% !important;
-    bottom: auto !important;
+    top: auto !important;
+    bottom: 10px !important;
     z-index: 700;
-    transform: translate(-50%, -50%) scale(0.6);
-    transform-origin: center;
+    transform: translateX(-50%);
+    max-width: calc(100% - 12px);
+    padding: 4px 6px;
+    gap: 4px;
+}
+
+body.bubble-mode .qeb-paste-btn {
+    padding: 4px 8px;
+    font-size: 11px;
+}
+
+body.bubble-mode .qeb-input {
+    font-size: 12px;
+    padding: 4px;
 }
 
 /* Compact grid for the small window - native scale, sized to fit */

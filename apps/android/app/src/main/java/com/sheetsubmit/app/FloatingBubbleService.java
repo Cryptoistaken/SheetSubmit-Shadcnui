@@ -166,21 +166,11 @@ public class FloatingBubbleService extends Service {
         FrameLayout root = new FrameLayout(this);
         root.setClipChildren(false);
 
-        FrameLayout circle = new FrameLayout(this);
-        GradientDrawable bg = new GradientDrawable();
-        bg.setShape(GradientDrawable.OVAL);
-        bg.setColor(0xFFF4F4F5);
-        bg.setStroke(dp(1), 0xFFE4E4E7);
-        circle.setBackground(bg);
-        FrameLayout.LayoutParams clp = new FrameLayout.LayoutParams(size, size, Gravity.CENTER);
-        circle.setLayoutParams(clp);
-
         ImageView icon = new ImageView(this);
         icon.setImageResource(R.drawable.bubble_icon);
-        FrameLayout.LayoutParams ilp = new FrameLayout.LayoutParams(dp(30), dp(30), Gravity.CENTER);
+        FrameLayout.LayoutParams ilp = new FrameLayout.LayoutParams(dp(44), dp(44), Gravity.CENTER);
         icon.setLayoutParams(ilp);
-        circle.addView(icon);
-        root.addView(circle);
+        root.addView(icon);
 
         bubbleParams = new WindowManager.LayoutParams(
                 windowSize, windowSize, overlayType(),
@@ -307,9 +297,6 @@ public class FloatingBubbleService extends Service {
                 miniWebView.onResume();
                 panelRoot.requestFocus();
                 if (miniWebView != null) miniWebView.requestFocus();
-                try {
-                    miniWebView.evaluateJavascript("window.__ss&&window.__ss.bubbleAutomate&&window.__ss.bubbleAutomate();", null);
-                } catch (Exception ignored) {}
                 try {
                     Intent cap = new Intent(this, ClipboardCaptureActivity.class);
                     cap.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 
 import { useUndoRedo } from "@/hooks/useUndoRedo";
+import { useConfirm } from "@/lib/confirm";
 import { useToast } from "@/lib/toast";
 import { parseSheetRows } from "@/lib/xlsx";
 import { useSheetStore } from "@/stores/sheetStore";
@@ -40,6 +41,7 @@ function RedoIcon() {
 export default function SheetToolbar() {
   const { canUndo, canRedo, undo, redo } = useUndoRedo();
   const showToast = useToast();
+  const confirm = useConfirm();
   const columns = useSheetStore((s) => s.columns);
   const visibleCols = useSheetStore((s) => s.visibleCols);
   const checkRunning = useSheetStore((s) => s.checkRunning);
@@ -177,6 +179,21 @@ export default function SheetToolbar() {
     close();
     pendingMerge.current = merge;
     fileInputRef.current?.click();
+  };
+
+  const deleteDead = async () => {
+    close();
+    const s = useSheetStore.getState();
+    const dead = s.rows.filter((r) => r.status === "bad").length;
+    if (!dead) {
+      showToast("No dead rows to delete");
+      return;
+    }
+    const ok = await confirm(
+      `Delete ${dead} dead row${dead === 1 ? "" : "s"}?`,
+      "Delete",
+    );
+    if (ok) useSheetStore.getState().deleteDeadRows();
   };
 
   return (
@@ -374,6 +391,22 @@ export default function SheetToolbar() {
             <line x1="4" y1="12" x2="20" y2="12" />
           </svg>
           Compact
+        </button>
+        <button className="sheet-more-item" onClick={() => void deleteDead()}>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            <line x1="10" y1="11" x2="10" y2="17" />
+            <line x1="14" y1="11" x2="14" y2="17" />
+          </svg>
+          Delete Dead
         </button>
         <div className="sheet-more-sep"></div>
         {columns.map((col) => (

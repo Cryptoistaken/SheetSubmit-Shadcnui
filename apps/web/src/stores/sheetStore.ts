@@ -182,6 +182,7 @@ export interface SheetState {
   moveEdit: (dRow: number, dCol: number) => void;
   quickEditPaste: () => Promise<void>;
   quickEditClear: () => void;
+  quickEditCopy: () => Promise<void>;
   enterSelectionMode: (
     type: "cell" | "col" | "row",
     row: number,
@@ -224,6 +225,7 @@ export interface SheetState {
   mergeRows: (incoming: Row[]) => void;
   applyUpload: (mode: "replace" | "append", incoming: Row[]) => void;
   removeEmptyRows: () => void;
+  deleteDeadRows: () => void;
   bubbleActiveRow: number;
   bubbleGetActiveRow: () => number;
   bubbleAdvanceActiveRow: () => void;
@@ -733,6 +735,18 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     get().commitCell(sc.rowIdx, sc.colIdx, "");
   },
 
+  quickEditCopy: async () => {
+    const sc = get().selectedCell;
+    if (!sc) return;
+    try {
+      await navigator.clipboard.writeText(get().draft);
+      vibrate();
+      toast("Copied");
+    } catch {
+      toast("Cannot copy");
+    }
+  },
+
   enterSelectionMode: (type, row, col) => {
     vibrate(15);
     const s = get();
@@ -895,7 +909,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     const behavior = getFileBehavior(s.file?.type ?? "fb_cookie");
     const rows = s.rows.slice();
     const newInvalid = new Set(s.invalidCells);
-    const undoEntries: UndoEntry[] = [];
+    const deltas: CellDelta[] = [];
     s.selectedItems.forEach((key) => {
       const parts = key.split(":");
       const rowIdx = Number(parts[0]);
@@ -903,7 +917,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
       const row = rows[rowIdx];
       if (!row) return;
       const prevVal = row[colKey] ?? "";
-      if (prevVal !== "") undoEntries.push({ rowIdx, colKey, prevVal });
+      if (prevVal !== "") deltas.push({ rowIdx, colKey, prevVal });
       rows[rowIdx] = { ...row, [colKey]: "" };
       if (behavior?.onCellChange) {
         behavior.onCellChange({
@@ -916,11 +930,13 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
         });
       }
     });
-    const undo = [...s.undoStack, ...undoEntries];
-    if (undo.length > 100) undo.splice(0, undo.length - 100);
+    const undoStack: UndoEntry[] = [...s.undoStack];
+    if (deltas.length > 1) undoStack.push({ type: "cells", deltas });
+    else if (deltas.length === 1) undoStack.push(deltas[0]);
+    if (undoStack.length > 100) undoStack.shift();
     set({
       rows,
-      undoStack: undo,
+      undoStack,
       redoStack: [],
       isDirty: true,
       invalidCells: newInvalid,
@@ -1187,9 +1203,20 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
         void get().runCheck();
         return;
       }
-      toast(
-        `Check done — ${result.valid} valid, ${result.dead} dead, ${result.uncertain} uncertain`,
-      );
+      if (
+        typeof document !== "undefined" &&
+        document.body.classList.contains("bubble-mode")
+      ) {
+        const parts: string[] = [];
+        if (result.valid > 0) parts.push(result.valid + " alive");
+        if (result.dead > 0) parts.push(result.dead + " dead");
+        if (result.uncertain > 0) parts.push(result.uncertain + " uncertain");
+        toast("Check: " + (parts.join(" · ") || "0 checked"));
+      } else {
+        toast(
+          `Check done — ${result.valid} valid, ${result.dead} dead, ${result.uncertain} uncertain`,
+        );
+      }
       if (
         s.file?.type === "fb_cookie" &&
         localStorage.getItem("ss_waCheck") === "true"
@@ -1502,6 +1529,41 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     toast(`Compacted - ${removed} row${removed === 1 ? "" : "s"} removed`);
   },
 
+  deleteDeadRows: () => {
+    const s = get();
+    const deadIdx: number[] = [];
+    s.rows.forEach((row, idx) => {
+      if (row.status === "bad") deadIdx.push(idx);
+    });
+    if (!deadIdx.length) {
+      toast("No dead rows to delete");
+      return;
+    }
+    const undoStack: UndoEntry[] = [
+      ...s.undoStack,
+      { type: "rows", prevRows: s.rows.map((r) => ({ ...r })) },
+    ];
+    if (undoStack.length > 100) undoStack.shift();
+    const deadSet = new Set(deadIdx);
+    const rows = s.rows.filter((_, idx) => !deadSet.has(idx));
+    set({
+      rows,
+      undoStack,
+      redoStack: [],
+      isDirty: true,
+      ...recomputeMarks(rows, s.crossDups, s.columns),
+      selectedCell: null,
+      qebOpen: false,
+      inlineEdit: false,
+      selectionMode: false,
+      selectedItems: new Set(),
+      selRows: new Set(),
+      selCols: new Set(),
+    });
+    get().persist("clean");
+    toast(`Deleted ${deadIdx.length} dead row${deadIdx.length === 1 ? "" : "s"}`);
+  },
+
   bubbleGetActiveRow: () => {
     const s = get();
     const complete = (r: Row) => !!(r.cookies && r.twofakey);
@@ -1682,7 +1744,7 @@ function applyCells(
   const behavior = getFileBehavior(s.file?.type ?? "fb_cookie");
   const rows = s.rows.slice();
   const newInvalid = new Set(s.invalidCells);
-  const undoEntries: UndoEntry[] = [];
+  const deltas: CellDelta[] = [];
   let changed = false;
   let lastKey: string | null = null;
   let pastedCookie = false;
@@ -1692,7 +1754,7 @@ function applyCells(
     const prevVal = row[cell.colKey] ?? "";
     if (prevVal === cell.value) continue;
     rows[cell.rowIdx] = { ...row, [cell.colKey]: cell.value };
-    undoEntries.push({
+    deltas.push({
       rowIdx: cell.rowIdx,
       colKey: cell.colKey,
       prevVal,
@@ -1718,11 +1780,13 @@ function applyCells(
     if (cell.colKey === "cookies" && cell.value) pastedCookie = true;
   }
   if (!changed) return;
-  const undo = [...s.undoStack, ...undoEntries];
-  if (undo.length > 100) undo.splice(0, undo.length - 100);
+  const undoStack: UndoEntry[] = [...s.undoStack];
+  if (deltas.length > 1) undoStack.push({ type: "cells", deltas });
+  else if (deltas.length === 1) undoStack.push(deltas[0]);
+  if (undoStack.length > 100) undoStack.shift();
   useSheetStore.setState({
     rows,
-    undoStack: undo,
+    undoStack,
     redoStack: [],
     isDirty: true,
     invalidCells: newInvalid,
