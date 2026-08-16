@@ -140,8 +140,7 @@ waRouter.post("/fb/check", requireAuth, async (req, res) => {
 
 // ── Page Check (auth required) ──
 // Detects whether the FB account owns a Facebook Page by fetching the Accounts
-// Center profiles page and scanning the linked identities. Replaces the old
-// WA Onboarding GraphQL flow (kept commented out below for rollback).
+// Center profiles page and scanning the linked identities.
 function extractPages(html: string): { name: string; type: string }[] {
   const pages: { name: string; type: string }[] = [];
   const re = /"identity_type":"FB_ADDITIONAL_PROFILE"[^}]*?"full_name":"([^"]+)"[^}]*?"identity_type_string":"([^"]+)"/g;
@@ -152,7 +151,7 @@ function extractPages(html: string): { name: string; type: string }[] {
   return pages;
 }
 
-waRouter.post("/fb/wa-check", requireAuth, async (req, res) => {
+waRouter.post("/fb/page-check", requireAuth, async (req, res) => {
   const cookie = String((req.body as { cookie?: unknown }).cookie || "");
   if (!cookie) {
     res.status(400).json({ error: "Cookie required" });
@@ -223,12 +222,6 @@ waRouter.post("/fb/wa-check", requireAuth, async (req, res) => {
   }
 });
 
-/*
- * ── OLD: WA Onboarding Eligibility Check (disabled, kept for rollback) ──
- * Used business.facebook.com/latest/inbox/wec + GraphQL
- * WhatsAppOnboardingUnifiedInboxSurfaceQuery (doc_id 27161030553583658) to read
- * xfb_is_page_eligible_for_wa_link. Superseded by the accountscenter page check.
-
 function extractWaPageId(html: string, finalUrl: string, cookie: string): string | null {
   let m = finalUrl.match(/[?&]asset_id[=_]\d{14,17}/);
   if (m) return m[0].match(/\d{14,17}/)![0];
@@ -256,6 +249,7 @@ function extractWaPageId(html: string, finalUrl: string, cookie: string): string
   return null;
 }
 
+// ── WA Onboarding Eligibility Check (auth required) ──
 waRouter.post("/fb/wa-check", requireAuth, async (req, res) => {
   const cookie = String((req.body as { cookie?: unknown }).cookie || "");
   if (!cookie) {
@@ -265,8 +259,7 @@ waRouter.post("/fb/wa-check", requireAuth, async (req, res) => {
   try {
     const pageRes = await fetch("https://business.facebook.com/latest/inbox/wec", {
       headers: {
-        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/
-/*;q=0.8",
+        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         cookie,
         "sec-fetch-site": "none",
         "sec-fetch-dest": "document",
@@ -313,8 +306,7 @@ waRouter.post("/fb/wa-check", requireAuth, async (req, res) => {
     const gqlRes = await fetch("https://business.facebook.com/api/graphql/", {
       method: "POST",
       headers: {
-        accept: "*/
-/*",
+        accept: "*/*",
         "content-type": "application/x-www-form-urlencoded",
         "x-fb-friendly-name": "WhatsAppOnboardingUnifiedInboxSurfaceQuery",
         cookie,
@@ -336,8 +328,7 @@ waRouter.post("/fb/wa-check", requireAuth, async (req, res) => {
       return;
     }
     let jsonStr = text.trim();
-    if (jsonStr.startsWith("for(;;);")) jsonStr = jsonStr.replace(/^for\s*\(;;\)\s*;?\s*/
-/*, "");
+    if (jsonStr.startsWith("for(;;);")) jsonStr = jsonStr.replace(/^for\s*\(;;\)\s*;?\s*/, "");
     let json: any;
     try {
       json = JSON.parse(jsonStr);
@@ -383,7 +374,6 @@ waRouter.post("/fb/wa-check", requireAuth, async (req, res) => {
     }
   }
 });
-*/
 
 // ── WA eligibility cache ──
 waRouter.get("/wa/cache", requireAuth, async (req, res) => {

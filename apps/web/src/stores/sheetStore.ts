@@ -1286,7 +1286,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
             });
           };
           try {
-            const wa = (await api.waCheck(w.row.cookies ?? "")) as {
+            const wa = (await api.pageCheck(w.row.cookies ?? "")) as {
               eligible?: boolean;
               error?: string | null;
               banReason?: string | null;

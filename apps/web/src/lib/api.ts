@@ -96,7 +96,12 @@ export const api = {
   getCrossDups: (fileId?: string) =>
     request<CrossDupResult>(`/cross-dups${fileId ? `?fileId=${fileId}` : ""}`),
   waCheck: (cookie: string) =>
-    request<{ eligible?: boolean; error?: string | null; banReason?: string | null; pageName?: string | null }>("/fb/wa-check", {
+    request<{ eligible?: boolean; error?: string | null; banReason?: string | null; linkedNumber?: string | null }>("/fb/wa-check", {
+      method: "POST",
+      body: JSON.stringify({ cookie }),
+    }),
+  pageCheck: (cookie: string) =>
+    request<{ eligible?: boolean; error?: string | null; banReason?: string | null; pageName?: string | null }>("/fb/page-check", {
       method: "POST",
       body: JSON.stringify({ cookie }),
     }),
