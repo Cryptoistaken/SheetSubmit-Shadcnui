@@ -88,6 +88,7 @@ export interface WaCacheEntry {
   status: string | null;
   banReason: string | null;
   error: string | null;
+  pageName?: string | null;
   ts: number | null;
 }
 

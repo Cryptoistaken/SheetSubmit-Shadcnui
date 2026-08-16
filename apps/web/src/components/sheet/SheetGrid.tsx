@@ -23,7 +23,7 @@ interface LogPopupState {
   logs: unknown[];
   label: string;
   crossInfo: CrossDupEntry[];
-  wa: { status: string; banReason?: string | null } | null;
+  wa: { status: string; banReason?: string | null; pageName?: string | null } | null;
   x: number;
   y: number;
 }
@@ -438,7 +438,7 @@ export default function SheetGrid() {
                   padding: "4px 0",
                 }}
               >
-                ✓ FB Page
+                ✓ FB Page{logPopup.wa.pageName ? ` — ${logPopup.wa.pageName}` : ""}
               </div>
             ) : logPopup.wa.banReason ? (
               <div

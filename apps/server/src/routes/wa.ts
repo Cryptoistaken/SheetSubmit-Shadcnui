@@ -138,6 +138,97 @@ waRouter.post("/fb/check", requireAuth, async (req, res) => {
   res.json({ valid, dead, uncertain });
 });
 
+// ── Page Check (auth required) ──
+// Detects whether the FB account owns a Facebook Page by fetching the Accounts
+// Center profiles page and scanning the linked identities. Replaces the old
+// WA Onboarding GraphQL flow (kept commented out below for rollback).
+function extractPages(html: string): { name: string; type: string }[] {
+  const pages: { name: string; type: string }[] = [];
+  const re = /"identity_type":"FB_ADDITIONAL_PROFILE"[^}]*?"full_name":"([^"]+)"[^}]*?"identity_type_string":"([^"]+)"/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html))) {
+    pages.push({ name: m[1], type: m[2] });
+  }
+  return pages;
+}
+
+waRouter.post("/fb/wa-check", requireAuth, async (req, res) => {
+  const cookie = String((req.body as { cookie?: unknown }).cookie || "");
+  if (!cookie) {
+    res.status(400).json({ error: "Cookie required" });
+    return;
+  }
+  try {
+    const pageRes = await fetch("https://accountscenter.facebook.com/profiles", {
+      headers: {
+        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        cookie,
+        "sec-ch-ua": '"Not=A?Brand";v="99", "Google Chrome";v="151", "Chromium";v="151"',
+        "sec-ch-ua-mobile": "?1",
+        "sec-ch-ua-platform": '"iOS"',
+        "sec-fetch-dest": "document",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-site": "same-origin",
+        "sec-fetch-user": "?1",
+        "upgrade-insecure-requests": "1",
+        "user-agent":
+          "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1",
+        "viewport-width": "833",
+      },
+      signal: AbortSignal.timeout(20000),
+      redirect: "follow",
+    });
+    const html = await pageRes.text();
+    if (html.includes("checkpointSubmitButton") || html.includes("m_login_email") || /checkpoint|login_attempt|force_login/i.test(html.substring(0, 5000))) {
+      res.json({ eligible: false, banReason: null, linkedNumber: null, pageName: null, error: "Session requires 2FA or login challenge" });
+      return;
+    }
+    const pages = extractPages(html);
+    const cuser = (cookie.match(/c_user=(\d+)/) || [])[1] || "";
+    const result = {
+      eligible: pages.length > 0,
+      banReason: null,
+      linkedNumber: null,
+      pageName: pages.length ? pages[0].name : null,
+      error: null,
+    };
+    if (cuser) {
+      if (result.eligible) {
+        await setJSON("wa:" + cuser, {
+          status: "eligible",
+          banReason: null,
+          pageName: result.pageName,
+          error: null,
+          ts: Date.now(),
+          checkedAt: Date.now(),
+        });
+      } else {
+        // definitive "no page" — never cache it; drop any stale entry so the
+        // next load re-checks live instead of trusting an old result.
+        await delKey("wa:" + cuser);
+      }
+    }
+    res.json(result);
+  } catch (e) {
+    const err = e as Error & { name?: string };
+    if (
+      err.name === "AbortError" ||
+      err.name === "TimeoutError" ||
+      (err.message && (err.message.includes("fetch") || err.message.includes("network")))
+    ) {
+      res.json({ eligible: false, banReason: null, linkedNumber: null, pageName: null, error: "Service unavailable" });
+    } else {
+      res.json({ eligible: false, banReason: null, linkedNumber: null, pageName: null, error: err.message });
+    }
+  }
+});
+
+/*
+ * ── OLD: WA Onboarding Eligibility Check (disabled, kept for rollback) ──
+ * Used business.facebook.com/latest/inbox/wec + GraphQL
+ * WhatsAppOnboardingUnifiedInboxSurfaceQuery (doc_id 27161030553583658) to read
+ * xfb_is_page_eligible_for_wa_link. Superseded by the accountscenter page check.
+
 function extractWaPageId(html: string, finalUrl: string, cookie: string): string | null {
   let m = finalUrl.match(/[?&]asset_id[=_]\d{14,17}/);
   if (m) return m[0].match(/\d{14,17}/)![0];
@@ -165,7 +256,6 @@ function extractWaPageId(html: string, finalUrl: string, cookie: string): string
   return null;
 }
 
-// ── WA Onboarding Eligibility Check (auth required) ──
 waRouter.post("/fb/wa-check", requireAuth, async (req, res) => {
   const cookie = String((req.body as { cookie?: unknown }).cookie || "");
   if (!cookie) {
@@ -175,7 +265,8 @@ waRouter.post("/fb/wa-check", requireAuth, async (req, res) => {
   try {
     const pageRes = await fetch("https://business.facebook.com/latest/inbox/wec", {
       headers: {
-        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/
+/*;q=0.8",
         cookie,
         "sec-fetch-site": "none",
         "sec-fetch-dest": "document",
@@ -222,7 +313,8 @@ waRouter.post("/fb/wa-check", requireAuth, async (req, res) => {
     const gqlRes = await fetch("https://business.facebook.com/api/graphql/", {
       method: "POST",
       headers: {
-        accept: "*/*",
+        accept: "*/
+/*",
         "content-type": "application/x-www-form-urlencoded",
         "x-fb-friendly-name": "WhatsAppOnboardingUnifiedInboxSurfaceQuery",
         cookie,
@@ -244,7 +336,8 @@ waRouter.post("/fb/wa-check", requireAuth, async (req, res) => {
       return;
     }
     let jsonStr = text.trim();
-    if (jsonStr.startsWith("for(;;);")) jsonStr = jsonStr.replace(/^for\s*\(;;\)\s*;?\s*/, "");
+    if (jsonStr.startsWith("for(;;);")) jsonStr = jsonStr.replace(/^for\s*\(;;\)\s*;?\s*/
+/*, "");
     let json: any;
     try {
       json = JSON.parse(jsonStr);
@@ -273,8 +366,6 @@ waRouter.post("/fb/wa-check", requireAuth, async (req, res) => {
           checkedAt: Date.now(),
         });
       } else if (result.error === null) {
-        // definitive "not eligible" — never cache it; drop any stale entry so the
-        // next load re-checks live instead of trusting an old ineligible result.
         await delKey("wa:" + cuser);
       }
     }
@@ -292,6 +383,7 @@ waRouter.post("/fb/wa-check", requireAuth, async (req, res) => {
     }
   }
 });
+*/
 
 // ── WA eligibility cache ──
 waRouter.get("/wa/cache", requireAuth, async (req, res) => {
@@ -302,7 +394,7 @@ waRouter.get("/wa/cache", requireAuth, async (req, res) => {
       .filter(Boolean);
     const cache: Record<string, unknown> = {};
     for (const uid of uids) {
-      const val = await getJSON<{ status?: string | null; banReason?: string | null; error?: string | null; ts?: number }>("wa:" + uid);
+      const val = await getJSON<{ status?: string | null; banReason?: string | null; error?: string | null; pageName?: string | null; ts?: number }>("wa:" + uid);
       if (!val) continue;
       if (WA_CACHE_TTL_MS > 0 && val.ts && Date.now() - val.ts > WA_CACHE_TTL_MS) {
         await delKey("wa:" + uid);
@@ -313,7 +405,7 @@ waRouter.get("/wa/cache", requireAuth, async (req, res) => {
         await delKey("wa:" + uid);
         continue;
       }
-      cache[uid] = { status: val.status || null, banReason: val.banReason || null, error: val.error || null, ts: val.ts || null };
+      cache[uid] = { status: val.status || null, banReason: val.banReason || null, error: val.error || null, pageName: val.pageName || null, ts: val.ts || null };
     }
     res.json({ cache });
   } catch (e) {

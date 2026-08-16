@@ -116,6 +116,25 @@ SheetSubmit-Shadcnui/
 ## 4. Handoff — where we left off & how to resume from any state
 
 ### Last state (as of last update)
+- **Page Check replaced WA GraphQL flow (uncommitted):** `/api/fb/wa-check`
+  (`apps/server/src/routes/wa.ts`) now fetches `https://accountscenter.facebook.com/profiles`
+  with the row's cookie (iPhone UA + `sec-ch-ua` headers, 20s timeout, follow redirect),
+  then regex-scans `"identity_type":"FB_ADDITIONAL_PROFILE"` entries for
+  `full_name` / `identity_type_string:"Facebook Page"`. Response:
+  `{ eligible: hasPage, banReason: null, linkedNumber: null, pageName: <first page name>, error: null }`
+  plus the usual checkpoint/2FA and service-unavailable error shapes. Cache key `wa:<c_user>`
+  now stores `pageName` too (eligible only, cached; ineligible purges — same TTL policy).
+  `/wa/cache` echoes `pageName`. **The entire old business-inbox + GraphQL
+  `WhatsAppOnboardingUnifiedInboxSurfaceQuery` flow is preserved in a block comment at the
+  bottom of the handler for rollback** (git also has it in `0f20e02`). Web: `sheetStore`
+  `runWaChecks`/`onDotHold`, `xlsx.hydrateWaCache`, `fbcookie.onCellChange` all carry
+  `row.wa_page_name`; SheetGrid dot long-press popup shows `✓ FB Page — <page name>`.
+  `WaCacheEntry`/`waCheck()` typed with `pageName`. Verified: server `tsc --noEmit` + web
+  `tsc -b && vite build` clean; the exact route fetch (iPhone headers + cookie for
+  `c_user=61592801176438`) returns 200 @ ~852KB and finds "zgxgk gkd"; cookies A/B/C from
+  user testing → 0 / 1 / 1 pages. Note: the GraphQL route (`doc_id 25028621296822693`)
+  rejects bare server-side calls with error `1357004` (needs session-bound `__dyn` etc.) —
+  HTML parse is the reliable path. Standalone harness: `B:\Studio\Tools\CodeGen\pagecheck.js`.
 - **Bubble UX overhaul (web + Android, commit PENDING):** (1) gear panel: removed
   "What's new" row, shortened subs ("Download the latest version", "Contact us on
   Telegram"), replaced ↻/ℹ/✉ unicode with lucide `RefreshCw`/`MessageCircle`;

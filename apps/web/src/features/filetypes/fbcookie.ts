@@ -45,6 +45,7 @@ export function createFbCookieBehavior() {
         } else {
           row.wa_status = "";
           row.wa_ban_reason = null;
+          row.wa_page_name = null;
         }
       }
 
