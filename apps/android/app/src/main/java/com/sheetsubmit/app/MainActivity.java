@@ -265,7 +265,7 @@ public class MainActivity extends Activity {
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
-                        Toast.makeText(MainActivity.this, "Checking for updates…", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(MainActivity.this, "Checking for updates", Toast.LENGTH_SHORT).show();
                     }
                 });
                 fetchLatestRelease(new ReleaseListener() {
@@ -716,11 +716,11 @@ public class MainActivity extends Activity {
 
     private LinearLayout makeProgressCard(int totalBytes) {
         LinearLayout layout = makeCardLayout();
-        layout.addView(makeCardTitle("Downloading update…"));
+        layout.addView(makeCardTitle("Downloading update"));
         ProgressBar bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         bar.setMax(100);
         bar.setProgressDrawable(getDrawable(R.drawable.bg_progress_bar));
-        TextView text = makeCardBody(String.format(Locale.US, "0%% · 0.0 / %.1f MB", totalBytes / 1048576.0));
+        TextView text = makeCardBody(String.format(Locale.US, "0%% %.1f / %.1f MB", totalBytes / 1048576.0, totalBytes / 1048576.0));
         progressBar = bar;
         progressText = text;
         LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
@@ -744,7 +744,7 @@ public class MainActivity extends Activity {
         }
         LinearLayout layout = makeCardLayout();
         layout.addView(makeCardTitle("Update available"));
-        layout.addView(makeCardBody("v" + ver + " · " + mb + " MB — install over the current version, data preserved"));
+        layout.addView(makeCardBody("v" + ver + ", " + mb + " MB. Install over the current version, data preserved"));
         if (!body.isEmpty()) {
             layout.addView(makeCardDivider());
             layout.addView(makeCardHeading("What's new"));
@@ -801,7 +801,7 @@ public class MainActivity extends Activity {
                     final Dialog dialog = makeCardDialog();
                     LinearLayout layout = makeCardLayout();
                     layout.addView(makeCardTitle("Allow installing updates?"));
-                    layout.addView(makeCardBody("SheetSubmit needs to install the update. You'll be taken to Settings to allow \"Install unknown apps\" for SheetSubmit — this is required only once."));
+                    layout.addView(makeCardBody("SheetSubmit needs to install the update. You'll be taken to Settings to allow \"Install unknown apps\" for SheetSubmit. This is required only once."));
                     Button cancel = makeGhostButton("Cancel");
                     cancel.setOnClickListener(new View.OnClickListener() {
                         @Override
@@ -950,7 +950,7 @@ public class MainActivity extends Activity {
     private void updateProgress(int pct, long downloaded, long totalBytes) {
         if (progressBar != null) progressBar.setProgress(pct);
         if (progressText != null) {
-            progressText.setText(String.format(Locale.US, "%d%% · %.1f / %.1f MB",
+            progressText.setText(String.format(Locale.US, "%d%% %.1f / %.1f MB",
                     pct, downloaded / 1048576.0, totalBytes / 1048576.0));
         }
     }

@@ -168,7 +168,7 @@ public class FloatingBubbleService extends Service {
 
         ImageView icon = new ImageView(this);
         icon.setImageResource(R.drawable.bubble_icon);
-        FrameLayout.LayoutParams ilp = new FrameLayout.LayoutParams(dp(44), dp(44), Gravity.CENTER);
+        FrameLayout.LayoutParams ilp = new FrameLayout.LayoutParams(dp(57), dp(57), Gravity.CENTER);
         icon.setLayoutParams(ilp);
         root.addView(icon);
 
