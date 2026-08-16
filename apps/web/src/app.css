@@ -1954,8 +1954,8 @@ th.rh:hover {
 .autocheck-toggle .autocheck-track::after {
     content: '';
     position: absolute;
-    top: 3px;
-    left: 3px;
+    top: 1.5px;
+    left: 1.5px;
     width: 14px;
     height: 14px;
     border-radius: 50%;
