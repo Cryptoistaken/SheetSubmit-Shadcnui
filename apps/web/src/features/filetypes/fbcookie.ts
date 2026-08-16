@@ -104,6 +104,10 @@ export function createFbCookieBehavior() {
           r.row.status = "good";
         } else if (data.dead.indexOf(r.uid) !== -1) {
           r.row.status = "bad";
+          r.row.wa_status = "";
+          r.row.wa_ban_reason = null;
+          r.row.wa_page_name = null;
+          r.row.wa_linked_number = null;
         } else {
           r.row.status = "pending";
         }

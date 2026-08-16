@@ -570,12 +570,12 @@ const GridRow = memo(function GridRow({
   const status = row?.status ?? "";
   const dotClass = isDupRow
     ? "d-yellow"
-    : row?.wa_status === "eligible"
-      ? "d-green"
-      : status === "good" || status === "done"
-        ? "d-blue"
-        : status === "bad"
-          ? "d-red"
+    : status === "bad"
+      ? "d-red"
+      : row?.wa_status === "eligible"
+        ? "d-green"
+        : status === "good" || status === "done"
+          ? "d-blue"
           : status === "pending"
             ? "d-spin d-yellow"
             : "";

@@ -116,7 +116,13 @@ SheetSubmit-Shadcnui/
 ## 4. Handoff — where we left off & how to resume from any state
 
 ### Last state (as of last update)
-- **Page Check dot popup also shows linked mobile number (uncommitted):** `/api/fb/page-check`
+- **Dead rows override page check (uncommitted):** a dead account (`status === "bad"`) now
+  always shows the red dot — `SheetGrid.dotClass` priority reordered to dup → bad(red) →
+  wa eligible(green) → good/done(blue) → pending(spin). `fbcookie.checkAccounts` clears
+  `wa_status`/`wa_ban_reason`/`wa_page_name`/`wa_linked_number` when a UID is dead, so stale
+  page/phone data never surfaces in the dot popup for dead accounts. Valid/pending paths
+  untouched. Verified: web `tsc -b` + `vite build` clean.
+- **Page Check dot popup also shows linked mobile number (committed `cbcbda2`):** `/api/fb/page-check`
   now extracts the linked number from the same accountscenter HTML via
   `"__typename":"XFBFXSettingsContactPoint"` → `navigation_row_subtitle` (present for accounts
   WITH and WITHOUT a page — verified `+37495632352` on the no-page cookie A). Response gained
