@@ -120,7 +120,7 @@ export default function BubbleMode({ fileId }: { fileId: string }) {
         st.retries = 0;
         const now = Date.now();
         if (st.lastText === t && now - st.lastAt < 15000) {
-          toast("Duplicate cookie/2FA");
+          toast(looksLikeCookie(t) ? "Duplicate cookie" : "Duplicate 2FA");
           return;
         }
         st.lastText = t;

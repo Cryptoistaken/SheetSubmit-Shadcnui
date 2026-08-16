@@ -1213,9 +1213,11 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
         if (result.uncertain > 0) parts.push(result.uncertain + " uncertain");
         toast("Check: " + (parts.join(" · ") || "0 checked"));
       } else {
-        toast(
-          `Check done — ${result.valid} valid, ${result.dead} dead, ${result.uncertain} uncertain`,
-        );
+        const parts: string[] = [];
+        if (result.valid > 0) parts.push(result.valid + " valid");
+        if (result.dead > 0) parts.push(result.dead + " dead");
+        if (result.uncertain > 0) parts.push(result.uncertain + " uncertain");
+        toast("Check done " + (parts.join(", ") || "0 checked"));
       }
       if (
         s.file?.type === "fb_cookie" &&
