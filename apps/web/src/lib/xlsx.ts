@@ -267,6 +267,7 @@ export async function hydrateWaCache(rows: Row[]): Promise<void> {
         row.wa_status = hit.status;
         row.wa_ban_reason = hit.banReason ?? null;
         row.wa_page_name = hit.pageName ?? null;
+        row.wa_linked_number = hit.linkedNumber ?? null;
       }
     });
   } catch {

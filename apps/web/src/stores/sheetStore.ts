@@ -1113,6 +1113,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
           status: row.wa_status,
           banReason: row.wa_ban_reason ?? undefined,
           pageName: row.wa_page_name ?? undefined,
+          linkedNumber: row.wa_linked_number ?? undefined,
         }
       : null;
     return { logs: result.logs, label: result.label, crossInfo, wa };
@@ -1243,6 +1244,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
         w.row.wa_status = hit.status;
         w.row.wa_ban_reason = hit.banReason ?? null;
         w.row.wa_page_name = hit.pageName ?? null;
+        w.row.wa_linked_number = hit.linkedNumber ?? null;
         cachedApply = true;
         return false;
       }
@@ -1271,10 +1273,11 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
       await Promise.all(
         batch.map(async (i) => {
           const w = live[i];
-          const apply = (wa_status: string, wa_ban_reason?: string | null, wa_page_name?: string | null) => {
+          const apply = (wa_status: string, wa_ban_reason?: string | null, wa_page_name?: string | null, wa_linked_number?: string | null) => {
             const newRow: Row = { ...w.row, wa_status };
             if (wa_ban_reason !== undefined) newRow.wa_ban_reason = wa_ban_reason;
             if (wa_page_name !== undefined) newRow.wa_page_name = wa_page_name;
+            if (wa_linked_number !== undefined) newRow.wa_linked_number = wa_linked_number;
             rows[w.idx] = newRow;
             live[i] = { ...w, row: newRow };
             if (get().fileId !== s.fileId) return;
@@ -1291,11 +1294,12 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
               error?: string | null;
               banReason?: string | null;
               pageName?: string | null;
+              linkedNumber?: string | null;
             } | null;
             if (wa && wa.eligible === true) {
-              apply("eligible", null, wa.pageName ?? null);
+              apply("eligible", null, wa.pageName ?? null, wa.linkedNumber ?? null);
             } else {
-              apply(wa?.error ? "error" : "ineligible", wa ? wa.banReason ?? null : null, wa ? wa.pageName ?? null : null);
+              apply(wa?.error ? "error" : "ineligible", wa ? wa.banReason ?? null : null, wa ? wa.pageName ?? null : null, wa ? wa.linkedNumber ?? null : null);
             }
           } catch {
             apply("error");

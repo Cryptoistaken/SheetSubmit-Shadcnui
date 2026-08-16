@@ -7,6 +7,7 @@ import type {
 import { useSheetStore } from "@/stores/sheetStore";
 import { vibrate } from "@/lib/utils";
 import type { ColumnDef, CrossDupEntry } from "@/lib/types";
+import { Check, Phone, TriangleAlert } from "lucide-react";
 
 interface ApiCall {
   type?: string;
@@ -23,7 +24,7 @@ interface LogPopupState {
   logs: unknown[];
   label: string;
   crossInfo: CrossDupEntry[];
-  wa: { status: string; banReason?: string | null; pageName?: string | null } | null;
+  wa: { status: string; banReason?: string | null; pageName?: string | null; linkedNumber?: string | null } | null;
   x: number;
   y: number;
 }
@@ -429,28 +430,53 @@ export default function SheetGrid() {
             </div>
           ) : null}
           {logPopup.wa ? (
-            logPopup.wa.status === "eligible" ? (
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: "var(--green)",
-                  padding: "4px 0",
-                }}
-              >
-                ✓ FB Page{logPopup.wa.pageName ? ` — ${logPopup.wa.pageName}` : ""}
-              </div>
-            ) : logPopup.wa.banReason ? (
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "var(--text3)",
-                  padding: "4px 0",
-                }}
-              >
-                ⚠ {logPopup.wa.banReason}
-              </div>
-            ) : null
+            <>
+              {logPopup.wa.status === "eligible" ? (
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: "var(--green)",
+                    padding: "4px 0",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  <Check size={12} strokeWidth={3} style={{ flexShrink: 0 }} />
+                  <span>FB Page{logPopup.wa.pageName ? ` — ${logPopup.wa.pageName}` : ""}</span>
+                </div>
+              ) : logPopup.wa.banReason ? (
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "var(--text3)",
+                    padding: "4px 0",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  <TriangleAlert size={12} style={{ flexShrink: 0 }} />
+                  <span>{logPopup.wa.banReason}</span>
+                </div>
+              ) : null}
+              {logPopup.wa.linkedNumber ? (
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "var(--text2)",
+                    padding: "4px 0",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  <Phone size={12} style={{ flexShrink: 0 }} />
+                  <span>{logPopup.wa.linkedNumber}</span>
+                </div>
+              ) : null}
+            </>
           ) : null}
           {logPopup.logs.length === 0 ? (
             <div style={{ padding: "6px 0", color: "var(--text3)", fontSize: 12 }}>

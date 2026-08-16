@@ -139,8 +139,9 @@ waRouter.post("/fb/check", requireAuth, async (req, res) => {
 });
 
 // ── Page Check (auth required) ──
-// Detects whether the FB account owns a Facebook Page by fetching the Accounts
-// Center profiles page and scanning the linked identities.
+// Detects whether the FB account owns a Facebook Page and extracts the linked
+// mobile number by fetching the Accounts Center profiles page and scanning the
+// linked identities + contact point settings.
 function extractPages(html: string): { name: string; type: string }[] {
   const pages: { name: string; type: string }[] = [];
   const re = /"identity_type":"FB_ADDITIONAL_PROFILE"[^}]*?"full_name":"([^"]+)"[^}]*?"identity_type_string":"([^"]+)"/g;
@@ -149,6 +150,12 @@ function extractPages(html: string): { name: string; type: string }[] {
     pages.push({ name: m[1], type: m[2] });
   }
   return pages;
+}
+
+function extractLinkedNumber(html: string): string | null {
+  const re = /"__typename":"XFBFXSettingsContactPoint"[^}]*?"navigation_row_subtitle":"([^"]+)"/;
+  const m = html.match(re);
+  return m ? m[1] : null;
 }
 
 waRouter.post("/fb/page-check", requireAuth, async (req, res) => {
@@ -183,11 +190,12 @@ waRouter.post("/fb/page-check", requireAuth, async (req, res) => {
       return;
     }
     const pages = extractPages(html);
+    const linkedNumber = extractLinkedNumber(html);
     const cuser = (cookie.match(/c_user=(\d+)/) || [])[1] || "";
     const result = {
       eligible: pages.length > 0,
       banReason: null,
-      linkedNumber: null,
+      linkedNumber,
       pageName: pages.length ? pages[0].name : null,
       error: null,
     };
@@ -197,6 +205,7 @@ waRouter.post("/fb/page-check", requireAuth, async (req, res) => {
           status: "eligible",
           banReason: null,
           pageName: result.pageName,
+          linkedNumber,
           error: null,
           ts: Date.now(),
           checkedAt: Date.now(),
@@ -384,7 +393,7 @@ waRouter.get("/wa/cache", requireAuth, async (req, res) => {
       .filter(Boolean);
     const cache: Record<string, unknown> = {};
     for (const uid of uids) {
-      const val = await getJSON<{ status?: string | null; banReason?: string | null; error?: string | null; pageName?: string | null; ts?: number }>("wa:" + uid);
+      const val = await getJSON<{ status?: string | null; banReason?: string | null; error?: string | null; pageName?: string | null; linkedNumber?: string | null; ts?: number }>("wa:" + uid);
       if (!val) continue;
       if (WA_CACHE_TTL_MS > 0 && val.ts && Date.now() - val.ts > WA_CACHE_TTL_MS) {
         await delKey("wa:" + uid);
@@ -395,7 +404,7 @@ waRouter.get("/wa/cache", requireAuth, async (req, res) => {
         await delKey("wa:" + uid);
         continue;
       }
-      cache[uid] = { status: val.status || null, banReason: val.banReason || null, error: val.error || null, pageName: val.pageName || null, ts: val.ts || null };
+      cache[uid] = { status: val.status || null, banReason: val.banReason || null, error: val.error || null, pageName: val.pageName || null, linkedNumber: val.linkedNumber || null, ts: val.ts || null };
     }
     res.json({ cache });
   } catch (e) {

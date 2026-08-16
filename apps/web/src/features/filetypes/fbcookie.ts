@@ -46,6 +46,7 @@ export function createFbCookieBehavior() {
           row.wa_status = "";
           row.wa_ban_reason = null;
           row.wa_page_name = null;
+          row.wa_linked_number = null;
         }
       }
 

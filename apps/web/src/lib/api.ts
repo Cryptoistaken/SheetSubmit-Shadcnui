@@ -101,7 +101,7 @@ export const api = {
       body: JSON.stringify({ cookie }),
     }),
   pageCheck: (cookie: string) =>
-    request<{ eligible?: boolean; error?: string | null; banReason?: string | null; pageName?: string | null }>("/fb/page-check", {
+    request<{ eligible?: boolean; error?: string | null; banReason?: string | null; pageName?: string | null; linkedNumber?: string | null }>("/fb/page-check", {
       method: "POST",
       body: JSON.stringify({ cookie }),
     }),

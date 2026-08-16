@@ -116,7 +116,19 @@ SheetSubmit-Shadcnui/
 ## 4. Handoff — where we left off & how to resume from any state
 
 ### Last state (as of last update)
-- **Page Check = new `/api/fb/page-check` endpoint (uncommitted):** `apps/server/src/routes/wa.ts`
+- **Page Check dot popup also shows linked mobile number (uncommitted):** `/api/fb/page-check`
+  now extracts the linked number from the same accountscenter HTML via
+  `"__typename":"XFBFXSettingsContactPoint"` → `navigation_row_subtitle` (present for accounts
+  WITH and WITHOUT a page — verified `+37495632352` on the no-page cookie A). Response gained
+  `linkedNumber`; `wa:<c_user>` cache + `/wa/cache` echo it. Web: row field
+  `wa_linked_number` flows through `runWaChecks` (cache hit + live), `onDotHold`,
+  `xlsx.hydrateWaCache`, `fbcookie.onCellChange` reset. Existing long-press dot popup renders a
+  lucide `Phone` line under the `Check` + "FB Page — <name>" line (same popup, no new
+  component; unicode ✓/☎/⚠ replaced with lucide `Check`/`Phone`/`TriangleAlert` SVGs per user
+  request).
+  Verified: server `tsc --noEmit` + web `tsc -b && vite build` clean. Standalone harness:
+  `C:\Users\Ratul\AppData\Local\Temp\opencode\fresh-cookie-probe.mjs`.
+- **Page Check = new `/api/fb/page-check` endpoint (committed `f5034fc`):** `apps/server/src/routes/wa.ts`
   gained `POST /fb/page-check` which fetches `https://accountscenter.facebook.com/profiles`
   with the row's cookie (iPhone UA + `sec-ch-ua` headers, 20s timeout, follow redirect),
   then regex-scans `"identity_type":"FB_ADDITIONAL_PROFILE"` entries for
