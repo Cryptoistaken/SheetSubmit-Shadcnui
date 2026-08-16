@@ -1,18 +1,20 @@
 package com.sheetsubmit.app;
 
 import android.app.Activity;
-import android.app.AlertDialog;
+import android.app.Dialog;
 import android.app.DownloadManager;
 import android.Manifest;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.ContentValues;
 import android.content.Context;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -24,8 +26,11 @@ import android.provider.MediaStore;
 import android.provider.Settings;
 import android.util.Base64;
 import android.util.Log;
+import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.webkit.CookieManager;
 import android.webkit.DownloadListener;
@@ -72,9 +77,9 @@ public class MainActivity extends Activity {
     private volatile boolean destroyed = false;
     private final Handler pollHandler = new Handler(Looper.getMainLooper());
     private ValueCallback<Uri[]> filePathCallback;
-    private AlertDialog progressDialog;
-    private AlertDialog updateDialog;
-    private AlertDialog permissionDialog;
+    private Dialog progressDialog;
+    private Dialog updateDialog;
+    private Dialog permissionDialog;
     private ProgressBar progressBar;
     private TextView progressText;
     private String pendingApkUrl;
@@ -268,13 +273,14 @@ public class MainActivity extends Activity {
                     public void onResult(final JSONObject json) {
                         final String tag = json.optString("tag_name");
                         if (!tag.matches("v\\d+")) return;
+                        final String ver = tag.substring(1);
                         try {
                             int installed = getPackageManager().getPackageInfo(getPackageName(), 0).versionCode;
-                            if (Integer.parseInt(tag.substring(1)) <= installed) {
+                            if (Integer.parseInt(ver) <= installed) {
                                 runOnUiThread(new Runnable() {
                                     @Override
                                     public void run() {
-                                        Toast.makeText(MainActivity.this, "You're up to date (v" + tag + ")", Toast.LENGTH_SHORT).show();
+                                        Toast.makeText(MainActivity.this, "You're up to date (v" + ver + ")", Toast.LENGTH_SHORT).show();
                                     }
                                 });
                                 return;
@@ -287,7 +293,7 @@ public class MainActivity extends Activity {
                             runOnUiThread(new Runnable() {
                                 @Override
                                 public void run() {
-                                    showUpdateCard(tag, mb, body, apkUrl, asset.optLong("size"));
+                                    showUpdateCard(ver, mb, body, apkUrl, asset.optLong("size"));
                                 }
                             });
                         } catch (Exception e) {
@@ -322,6 +328,7 @@ public class MainActivity extends Activity {
                     @Override
                     public void onResult(final JSONObject json) {
                         final String tag = json.optString("tag_name");
+                        final String ver = tag.startsWith("v") ? tag.substring(1) : tag;
                         final String body = json.optString("body", "").trim();
                         runOnUiThread(new Runnable() {
                             @Override
@@ -331,11 +338,29 @@ public class MainActivity extends Activity {
                                     return;
                                 }
                                 if (isFinishing() || isDestroyed()) return;
-                                AlertDialog.Builder b = new AlertDialog.Builder(MainActivity.this);
-                                b.setTitle(getString(R.string.whats_new_title) + " in " + tag);
-                                b.setMessage(body.isEmpty() ? getString(R.string.whats_new_empty) : body);
-                                b.setPositiveButton("OK", null);
-                                b.show();
+                                final Dialog d = makeCardDialog();
+                                LinearLayout layout = makeCardLayout();
+                                layout.addView(makeCardTitle(getString(R.string.whats_new_title) + " in v" + ver));
+                                if (body.isEmpty()) {
+                                    layout.addView(makeCardBody(getString(R.string.whats_new_empty)));
+                                } else {
+                                    TextView notes = makeCardBody(body);
+                                    notes.setTextSize(12);
+                                    notes.setLineSpacing(dp(3), 1f);
+                                    layout.addView(notes);
+                                }
+                                Button ok = makePrimaryButton("OK");
+                                ok.setOnClickListener(new View.OnClickListener() {
+                                    @Override
+                                    public void onClick(View v) {
+                                        try {
+                                            d.dismiss();
+                                        } catch (Exception ignored) {}
+                                    }
+                                });
+                                addButtonRow(layout, ok);
+                                d.setContentView(layout);
+                                d.show();
                             }
                         });
                     }
@@ -565,7 +590,151 @@ public class MainActivity extends Activity {
         FloatingBubbleService.start(this);
     }
 
-    private void showUpdateCard(final String tag, final long mb, final String body,
+    private int dp(float v) {
+        return Math.round(v * getResources().getDisplayMetrics().density);
+    }
+
+    private Dialog makeCardDialog() {
+        Dialog d = new Dialog(this);
+        d.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        Window w = d.getWindow();
+        if (w != null) {
+            w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            WindowManager.LayoutParams lp = w.getAttributes();
+            lp.dimAmount = 0.35f;
+            w.setAttributes(lp);
+            w.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            int width = Math.min(dp(300), getResources().getDisplayMetrics().widthPixels - dp(48));
+            w.setLayout(width, WindowManager.LayoutParams.WRAP_CONTENT);
+        }
+        return d;
+    }
+
+    private LinearLayout makeCardLayout() {
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(getColor(R.color.ss_dialog_bg));
+        bg.setStroke(dp(1), getColor(R.color.ss_dialog_border));
+        bg.setCornerRadius(dp(8));
+        layout.setBackground(bg);
+        int p = dp(16);
+        layout.setPadding(p, p, p, p);
+        return layout;
+    }
+
+    private TextView makeCardTitle(String text) {
+        TextView tv = new TextView(this);
+        tv.setText(text);
+        tv.setTextSize(15);
+        tv.setTypeface(tv.getTypeface(), Typeface.BOLD);
+        tv.setTextColor(getColor(R.color.ss_title_text));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.bottomMargin = dp(8);
+        tv.setLayoutParams(lp);
+        return tv;
+    }
+
+    private TextView makeCardBody(String text) {
+        TextView tv = new TextView(this);
+        tv.setText(text);
+        tv.setTextSize(13);
+        tv.setTextColor(getColor(R.color.ss_body_text));
+        return tv;
+    }
+
+    private TextView makeCardHeading(String text) {
+        TextView tv = new TextView(this);
+        tv.setText(text);
+        tv.setTextSize(12);
+        tv.setTypeface(tv.getTypeface(), Typeface.BOLD);
+        tv.setTextColor(getColor(R.color.ss_title_text));
+        return tv;
+    }
+
+    private View makeCardDivider() {
+        View v = new View(this);
+        v.setBackgroundColor(getColor(R.color.ss_dialog_border));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(1));
+        lp.topMargin = dp(12);
+        lp.bottomMargin = dp(12);
+        v.setLayoutParams(lp);
+        return v;
+    }
+
+    private Button makePrimaryButton(String text) {
+        Button b = new Button(this);
+        b.setText(text);
+        b.setAllCaps(false);
+        b.setTextSize(13);
+        b.setTypeface(b.getTypeface(), Typeface.BOLD);
+        b.setTextColor(getColor(R.color.ss_btn_primary_text));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(getColor(R.color.ss_btn_primary_bg));
+        bg.setCornerRadius(dp(6));
+        b.setBackground(bg);
+        b.setPadding(dp(24), dp(12), dp(24), dp(12));
+        b.setMinWidth(0);
+        b.setMinHeight(0);
+        return b;
+    }
+
+    private Button makeGhostButton(String text) {
+        Button b = new Button(this);
+        b.setText(text);
+        b.setAllCaps(false);
+        b.setTextSize(13);
+        b.setTextColor(getColor(R.color.ss_btn_ghost_text));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Color.TRANSPARENT);
+        bg.setStroke(dp(1), getColor(R.color.ss_btn_ghost_border));
+        bg.setCornerRadius(dp(6));
+        b.setBackground(bg);
+        b.setPadding(dp(24), dp(12), dp(24), dp(12));
+        b.setMinWidth(0);
+        b.setMinHeight(0);
+        return b;
+    }
+
+    private void addButtonRow(LinearLayout layout, Button... buttons) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        for (int i = 0; i < buttons.length; i++) {
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            if (i > 0) lp.leftMargin = dp(8);
+            row.addView(buttons[i], lp);
+        }
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rlp.topMargin = dp(16);
+        layout.addView(row, rlp);
+    }
+
+    private LinearLayout makeProgressCard(int totalBytes) {
+        LinearLayout layout = makeCardLayout();
+        layout.addView(makeCardTitle("Downloading update…"));
+        ProgressBar bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        bar.setMax(100);
+        bar.setProgressDrawable(getDrawable(R.drawable.bg_progress_bar));
+        TextView text = makeCardBody(String.format(Locale.US, "0%% · 0.0 / %.1f MB", totalBytes / 1048576.0));
+        progressBar = bar;
+        progressText = text;
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        blp.topMargin = dp(12);
+        layout.addView(bar, blp);
+        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        tlp.topMargin = dp(8);
+        layout.addView(text, tlp);
+        return layout;
+    }
+
+    private void showUpdateCard(final String ver, final long mb, final String body,
                                 final String apkUrl, final long sizeBytes) {
         if (isFinishing() || isDestroyed()) return;
         if (updateDialog != null && updateDialog.isShowing()) {
@@ -573,43 +742,32 @@ public class MainActivity extends Activity {
                 updateDialog.dismiss();
             } catch (Exception ignored) {}
         }
-        float density = getResources().getDisplayMetrics().density;
-        LinearLayout layout = new LinearLayout(this);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setPadding((int) (4 * density), (int) (4 * density), (int) (4 * density), (int) (4 * density));
-
-        TextView line = new TextView(this);
-        line.setText("v" + tag + " · " + mb + " MB — install over the current version, data preserved");
-        layout.addView(line);
-
+        LinearLayout layout = makeCardLayout();
+        layout.addView(makeCardTitle("Update available"));
+        layout.addView(makeCardBody("v" + ver + " · " + mb + " MB — install over the current version, data preserved"));
         if (!body.isEmpty()) {
-            View divider = new View(this);
-            divider.setBackgroundColor(0xFF9CA3AF);
-            LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, (int) (1 * density));
-            dlp.topMargin = (int) (12 * density);
-            dlp.bottomMargin = (int) (12 * density);
-            layout.addView(divider, dlp);
-
-            TextView heading = new TextView(this);
-            heading.setText("What's new");
-            heading.setTypeface(heading.getTypeface(), Typeface.BOLD);
-            LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            hlp.bottomMargin = (int) (4 * density);
-            layout.addView(heading, hlp);
-
-            TextView notes = new TextView(this);
-            notes.setText(body);
+            layout.addView(makeCardDivider());
+            layout.addView(makeCardHeading("What's new"));
+            TextView notes = makeCardBody(body);
+            notes.setTextSize(12);
+            notes.setLineSpacing(dp(3), 1f);
             layout.addView(notes);
         }
-
-        AlertDialog.Builder b = new AlertDialog.Builder(this);
-        b.setTitle("Update available");
-        b.setView(layout);
-        b.setPositiveButton("Update", new DialogInterface.OnClickListener() {
+        Button ghost = makeGhostButton("Later");
+        ghost.setOnClickListener(new View.OnClickListener() {
             @Override
-            public void onClick(DialogInterface d, int which) {
+            public void onClick(View v) {
+                if (updateDialog != null) {
+                    try {
+                        updateDialog.dismiss();
+                    } catch (Exception ignored) {}
+                }
+            }
+        });
+        Button primary = makePrimaryButton("Update");
+        primary.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
                 if (updateDialog != null) {
                     try {
                         updateDialog.dismiss();
@@ -618,8 +776,10 @@ public class MainActivity extends Activity {
                 launchDownload(apkUrl, sizeBytes);
             }
         });
-        b.setNegativeButton("Later", null);
-        updateDialog = b.create();
+        addButtonRow(layout, ghost, primary);
+        Dialog d = makeCardDialog();
+        d.setContentView(layout);
+        updateDialog = d;
         updateDialog.show();
     }
 
@@ -638,25 +798,40 @@ public class MainActivity extends Activity {
                 @Override
                 public void run() {
                     if (isFinishing() || isDestroyed()) return;
-                    permissionDialog = new AlertDialog.Builder(MainActivity.this)
-                            .setTitle("Allow installing updates?")
-                            .setMessage("SheetSubmit needs to install the update. You'll be taken to Settings to allow \"Install unknown apps\" for SheetSubmit — this is required only once.")
-                            .setPositiveButton("Allow", new DialogInterface.OnClickListener() {
-                                @Override
-                                public void onClick(DialogInterface d, int which) {
-                                    try {
-                                        startActivityForResult(settingsIntent, REQ_UNKNOWN_APP_SOURCES);
-                                    } catch (Exception e) {
-                                        pendingApkUrl = null;
-                                        pendingApkSize = 0;
-                                        Toast.makeText(MainActivity.this,
-                                                "Couldn't open install-permission settings. Please enable \"Install unknown apps\" for SheetSubmit in your system settings, then try again.",
-                                                Toast.LENGTH_LONG).show();
-                                    }
-                                }
-                            })
-                            .setNegativeButton("Cancel", null)
-                            .create();
+                    final Dialog dialog = makeCardDialog();
+                    LinearLayout layout = makeCardLayout();
+                    layout.addView(makeCardTitle("Allow installing updates?"));
+                    layout.addView(makeCardBody("SheetSubmit needs to install the update. You'll be taken to Settings to allow \"Install unknown apps\" for SheetSubmit — this is required only once."));
+                    Button cancel = makeGhostButton("Cancel");
+                    cancel.setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            try {
+                                dialog.dismiss();
+                            } catch (Exception ignored) {}
+                        }
+                    });
+                    Button allow = makePrimaryButton("Allow");
+                    allow.setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            try {
+                                startActivityForResult(settingsIntent, REQ_UNKNOWN_APP_SOURCES);
+                            } catch (Exception e) {
+                                pendingApkUrl = null;
+                                pendingApkSize = 0;
+                                Toast.makeText(MainActivity.this,
+                                        "Couldn't open install-permission settings. Please enable \"Install unknown apps\" for SheetSubmit in your system settings, then try again.",
+                                        Toast.LENGTH_LONG).show();
+                            }
+                            try {
+                                dialog.dismiss();
+                            } catch (Exception ignored) {}
+                        }
+                    });
+                    addButtonRow(layout, cancel, allow);
+                    dialog.setContentView(layout);
+                    permissionDialog = dialog;
                     permissionDialog.show();
                 }
             });
@@ -667,7 +842,7 @@ public class MainActivity extends Activity {
 
     private void startDownload(final String apkUrl, final long totalBytes) {
         if (isFinishing() || isDestroyed()) return;
-        showInlineProgress(totalBytes);
+        showProgressDialog(totalBytes);
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -762,60 +937,13 @@ public class MainActivity extends Activity {
         }).start();
     }
 
-    private void showInlineProgress(long totalBytes) {
-        if (isFinishing() || isDestroyed()) return;
-        if (updateDialog != null && updateDialog.isShowing()) {
-            float density = getResources().getDisplayMetrics().density;
-            LinearLayout layout = new LinearLayout(this);
-            layout.setOrientation(LinearLayout.VERTICAL);
-            layout.setPadding((int) (4 * density), (int) (4 * density), (int) (4 * density), (int) (4 * density));
-            ProgressBar bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-            bar.setMax(100);
-            TextView text = new TextView(this);
-            text.setText("0% · 0.0 / " + String.format(Locale.US, "%.1f MB", totalBytes / 1048576.0));
-            layout.addView(bar);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            lp.topMargin = (int) (12 * density);
-            layout.addView(text, lp);
-            progressBar = bar;
-            progressText = text;
-            progressDialog = updateDialog;
-            updateDialog.setTitle("Downloading update…");
-            updateDialog.setCancelable(false);
-            updateDialog.setView(layout);
-            Button positive = updateDialog.getButton(DialogInterface.BUTTON_POSITIVE);
-            if (positive != null) positive.setVisibility(View.GONE);
-            Button negative = updateDialog.getButton(DialogInterface.BUTTON_NEGATIVE);
-            if (negative != null) negative.setVisibility(View.GONE);
-        } else {
-            showProgressDialog(totalBytes);
-        }
-    }
-
     private void showProgressDialog(long totalBytes) {
         if (isFinishing() || isDestroyed()) return;
-        float density = getResources().getDisplayMetrics().density;
-        LinearLayout layout = new LinearLayout(this);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        int pad = (int) (16 * density);
-        layout.setPadding(pad, pad, pad, pad);
-        ProgressBar bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-        bar.setMax(100);
-        TextView text = new TextView(this);
-        text.setText("0% · 0.0 / " + String.format(Locale.US, "%.1f MB", totalBytes / 1048576.0));
-        layout.addView(bar);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.topMargin = (int) (12 * density);
-        layout.addView(text, lp);
-        progressBar = bar;
-        progressText = text;
-        progressDialog = new AlertDialog.Builder(this)
-                .setTitle("Downloading update…")
-                .setView(layout)
-                .setCancelable(false)
-                .create();
+        LinearLayout layout = makeProgressCard((int) totalBytes);
+        Dialog d = makeCardDialog();
+        d.setCancelable(false);
+        d.setContentView(layout);
+        progressDialog = d;
         progressDialog.show();
     }
 

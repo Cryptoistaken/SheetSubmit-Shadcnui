@@ -113,14 +113,14 @@ export default function BubbleMode({ fileId }: { fileId: string }) {
             st.timer = setTimeout(run, 400);
           } else {
             st.retries = 0;
-            toast("Clipboard is empty - copy a cookie or 2FA key first");
+            toast("Nothing copied");
           }
           return;
         }
         st.retries = 0;
         const now = Date.now();
         if (st.lastText === t && now - st.lastAt < 15000) {
-          toast("Already processed - copy something new");
+          toast("Already saved");
           return;
         }
         st.lastText = t;
@@ -135,7 +135,7 @@ export default function BubbleMode({ fileId }: { fileId: string }) {
         } else if (looksLikeKey(t)) {
           void useSheetStore.getState().bubbleSaveKey(t).finally(finish);
         } else {
-          toast("Clipboard: no cookie or 2FA key found");
+          toast("No cookie or key");
           finish();
         }
       });
@@ -171,7 +171,7 @@ export default function BubbleMode({ fileId }: { fileId: string }) {
 
   useEffect(() => {
     if (status === "ready" && fileType && fileType !== "fb_cookie") {
-      toast("Bubble file must be a Facebook file - please re-enable bubble");
+      toast("Not a FB file");
     }
   }, [status, fileType]);
 

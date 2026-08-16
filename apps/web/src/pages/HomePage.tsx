@@ -107,6 +107,7 @@ export default function HomePage() {
       try {
         if (android.getBubbleFile?.() === f.id) {
           android.disableBubble?.();
+          useBubbleStore.getState().setOn(false);
           showToast("Floating bubble disabled - file archived");
         }
       } catch {

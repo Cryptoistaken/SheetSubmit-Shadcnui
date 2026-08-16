@@ -160,6 +160,7 @@ export interface SheetState {
   hasDuplicates: boolean;
   crossDups: Record<string, unknown[]>;
   checkRunning: boolean;
+  pendingAutoCheck: boolean;
   isDesktop: boolean;
   adminMode: boolean;
   adminOwnerId: string | null;
@@ -260,6 +261,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
   hasDuplicates: false,
   crossDups: {},
   checkRunning: false,
+  pendingAutoCheck: false,
   isDesktop: IS_DESKTOP,
   bubbleActiveRow: -1,
   adminMode: false,
@@ -316,6 +318,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
         invalidCells: new Set(),
         crossDups,
         checkRunning: false,
+        pendingAutoCheck: false,
         ...recomputeMarks(rows, crossDups, columns),
       });
     } catch {
@@ -353,6 +356,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
       hasDuplicates: false,
       crossDups: {},
       checkRunning: false,
+      pendingAutoCheck: false,
       adminMode: false,
       adminOwnerId: null,
     });
@@ -405,6 +409,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
         invalidCells: new Set(),
         crossDups: {},
         checkRunning: false,
+        pendingAutoCheck: false,
         ...recomputeMarks(rows, {}, columns),
       });
     } catch {
@@ -1177,6 +1182,11 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
         ...recomputeMarks(rows, s.crossDups, s.columns),
       });
       get().persist();
+      if (get().pendingAutoCheck) {
+        set({ pendingAutoCheck: false });
+        void get().runCheck();
+        return;
+      }
       toast(
         `Check done — ${result.valid} valid, ${result.dead} dead, ${result.uncertain} uncertain`,
       );
@@ -1187,18 +1197,21 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
         void get().runWaChecks();
       }
     } catch (e) {
-      set({ checkRunning: false });
+      set({ checkRunning: false, pendingAutoCheck: false });
       toast("Check failed: " + (e instanceof Error ? e.message : String(e)));
     }
   },
 
   maybeAutoCheck: (_rowIdx, colKey) => {
     const s = get();
-    if (s.checkRunning) return;
     if (localStorage.getItem("ss_autoCheck") === "false") return;
     const behavior = getFileBehavior(s.file?.type ?? "fb_cookie");
     if (!behavior?.checkAccounts) return;
     if (colKey !== "cookies") return;
+    if (s.checkRunning) {
+      if (!s.pendingAutoCheck) set({ pendingAutoCheck: true });
+      return;
+    }
     void get().runCheck();
   },
 
@@ -1396,6 +1409,9 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     });
     get().persist("merge");
     void refreshCrossDups(s.fileId);
+    if (added.some((r) => r.cookies || r.uid)) {
+      get().maybeAutoCheck(0, "cookies");
+    }
     toast(`Merged ${added.length} (skipped ${skipped})`);
   },
 
@@ -1439,6 +1455,9 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
       toast(`Appended ${incoming.length} rows`);
     }
     void refreshCrossDups(s.fileId);
+    if (incoming.some((r) => r.cookies || r.uid)) {
+      get().maybeAutoCheck(0, "cookies");
+    }
   },
 
   removeEmptyRows: () => {
@@ -1526,12 +1545,12 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     const trimmed = (text || "").trim();
     const dupe = s.rows.findIndex((r) => (r.cookies ?? "").trim() === trimmed);
     if (dupe !== -1) {
-      toast("Dup cookie @ row " + (dupe + 1));
+      toast("Duplicate @ " + (dupe + 1));
       return;
     }
     const idx = get().bubbleGetActiveRow();
     if (s.rows[idx].cookies) {
-      toast("Row " + (idx + 1) + ": paste 2FA key");
+      toast("Paste 2FA key");
       return;
     }
     const rows = s.rows.slice();
@@ -1550,11 +1569,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     }
     vibrate(15);
     const complete = !!rows[idx].twofakey;
-    toast(
-      complete
-        ? "Row " + (idx + 1) + " done - next cookie"
-        : "Row " + (idx + 1) + ": paste 2FA key",
-    );
+    toast(complete ? "Row " + (idx + 1) + " done" : "Paste 2FA key");
     set({
       rows,
       isDirty: true,
@@ -1562,6 +1577,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
       ...recomputeMarks(rows, s.crossDups, s.columns),
     });
     get().persist("bubble");
+    get().maybeAutoCheck(idx, "cookies");
     if (complete) get().bubbleAdvanceActiveRow();
   },
 
@@ -1571,13 +1587,13 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     for (let i = 0; i < s.rows.length; i++) {
       const k = s.rows[i].twofakey ? normalizeBubbleKey(s.rows[i].twofakey) : "";
       if (k === key) {
-        toast("Dup 2FA @ row " + (i + 1));
+        toast("Duplicate 2FA");
         return;
       }
     }
     const idx = get().bubbleGetActiveRow();
     if (s.rows[idx].twofakey) {
-      toast("Row " + (idx + 1) + ": paste cookie");
+      toast("Paste cookie");
       return;
     }
     const rows = s.rows.slice();
@@ -1596,11 +1612,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     }
     vibrate(15);
     const complete = !!rows[idx].cookies;
-    toast(
-      complete
-        ? "Row " + (idx + 1) + " done - next cookie"
-        : "Row " + (idx + 1) + ": paste cookie",
-    );
+    toast(complete ? "Row " + (idx + 1) + " done" : "Paste cookie");
     set({
       rows,
       isDirty: true,
@@ -1614,12 +1626,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
   bubbleSkipNo2FA: () => {
     const idx = get().bubbleGetActiveRow();
     const row = get().rows[idx];
-    const label = row?.cookies
-      ? "2FA skipped"
-      : row?.twofakey
-        ? "cookie skipped"
-        : "skipped";
-    toast("Row " + (idx + 1) + " - " + label);
+    toast(row?.cookies ? "2FA skipped" : row?.twofakey ? "Skipped" : "Skipped");
     vibrate(15);
     get().bubbleAdvanceActiveRow();
   },
@@ -1678,6 +1685,7 @@ function applyCells(
   const undoEntries: UndoEntry[] = [];
   let changed = false;
   let lastKey: string | null = null;
+  let pastedCookie = false;
   for (const cell of cells) {
     const row = rows[cell.rowIdx];
     if (!row) continue;
@@ -1707,6 +1715,7 @@ function applyCells(
         showToast: toast,
       });
     }
+    if (cell.colKey === "cookies" && cell.value) pastedCookie = true;
   }
   if (!changed) return;
   const undo = [...s.undoStack, ...undoEntries];
@@ -1720,6 +1729,9 @@ function applyCells(
     ...recomputeMarks(rows, s.crossDups, s.columns),
   });
   useSheetStore.getState().persist();
+  if (pastedCookie) {
+    useSheetStore.getState().maybeAutoCheck(0, "cookies");
+  }
   toast(toastMsg);
   if (lastKey && !s.isDesktop) {
     void getCachedTOTP(lastKey)

@@ -329,7 +329,6 @@ public class FloatingBubbleService extends Service {
                         }
                     } catch (Exception ignored) {}
                 }
-            panelRoot.setFocusableInTouchMode(true);
             final int[] pollCount = {0};
             final Runnable pollRunnable = new Runnable() {
                 @Override
@@ -351,19 +350,22 @@ public class FloatingBubbleService extends Service {
             }
 
             panelRoot.addView(card);
-            panelRoot.setOnClickListener(new View.OnClickListener() {
+            panelRoot.setOnTouchListener(new View.OnTouchListener() {
                 @Override
-                public void onClick(View v) {
-                    if (SystemClock.elapsedRealtime() - panelShownAt > 350) {
+                public boolean onTouch(View v, MotionEvent event) {
+                    if (event.getActionMasked() == MotionEvent.ACTION_DOWN
+                            && SystemClock.elapsedRealtime() - panelShownAt > 350) {
                         hidePanel();
+                        return true;
                     }
+                    return false;
                 }
             });
             card.setClickable(true);
 
             WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
                     WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
-                    overlayType(), 0, PixelFormat.TRANSLUCENT);
+                    overlayType(), WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, PixelFormat.TRANSLUCENT);
             lp.gravity = Gravity.TOP | Gravity.START;
             lp.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
             windowManager.addView(panelRoot, lp);
@@ -484,7 +486,7 @@ public class FloatingBubbleService extends Service {
         Intent openApp = new Intent(this, MainActivity.class);
         PendingIntent pi = PendingIntent.getActivity(this, 0, openApp, PendingIntent.FLAG_IMMUTABLE);
         Notification n = new Notification.Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.mipmap.ic_launcher)
+                .setSmallIcon(R.drawable.bubble_icon)
                 .setContentTitle("SheetSubmit bubble")
                 .setContentText("Mini sheet is active")
                 .setOngoing(true)
