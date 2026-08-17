@@ -48,11 +48,16 @@ jobs:
         env:
           VERSION_CODE: ${{ github.run_number }}
 
+      - name: Rename APK with version name
+        run: |
+          cp apps/android/app/build/outputs/apk/release/app-release.apk \
+             apps/android/app/build/outputs/apk/release/SheetSubmit-1.0.${{ github.run_number }}.apk
+
       - name: Upload APK
         uses: actions/upload-artifact@v7
         with:
           name: sheetsubmit-apk
-          path: apps/android/app/build/outputs/apk/release/app-release.apk
+          path: apps/android/app/build/outputs/apk/release/SheetSubmit-1.0.${{ github.run_number }}.apk
           if-no-files-found: error
 
       - name: Generate changelog
@@ -80,4 +85,4 @@ jobs:
           tag_name: v${{ github.run_number }}
           name: v${{ github.run_number }}
           body_path: changelog.md
-          files: apps/android/app/build/outputs/apk/release/app-release.apk
+          files: apps/android/app/build/outputs/apk/release/SheetSubmit-1.0.${{ github.run_number }}.apk
