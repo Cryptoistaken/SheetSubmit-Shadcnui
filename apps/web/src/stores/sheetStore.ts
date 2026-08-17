@@ -1025,6 +1025,10 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
         toast("Cannot copy");
       }
     }
+    // The first tap of the double-tap already opened the QEB with a stale
+    // draft; leaving it open means the next commit wipes the value the
+    // double-tap just pasted/copied. Close it but keep the cell selected.
+    set({ qebOpen: false, inlineEdit: false, draft: "" });
   },
 
   tripleTapRow: async (rowIdx) => {
